@@ -4,140 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video to Audio Converter</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f4f4f4;
-        }
-        input[type="file"] {
-            margin-bottom: 20px;
-        }
-        progress {
-            width: 300px; /* Fixed width for progress bar */
-            margin-top: 20px;
-        }
-        #transcription-links {
-            margin-top: 20px;
-            width: 100%;
-            max-width: 400px; /* Set a max width for the transcription section */
-            padding: 10px;
-            background: #fff; /* White background for the transcription section */
-            border: 1px solid #ccc; /* Light gray border */
-            border-radius: 5px; /* Rounded corners */
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
-        }
-        .transcription-item {
-            display: flex; /* Use flexbox for alignment */
-            justify-content: space-between; /* Space between name and button */
-            align-items: center; /* Center items vertically */
-            margin-top: 10px; /* Space between items */
-            padding: 5px; /* Padding for item */
-            border-bottom: 1px solid #eee; /* Bottom border for item separation */
-        }
-        .transcription-item:last-child {
-            border-bottom: none; /* Remove border from last item */
-        }
-        button {
-            padding: 5px 10px; /* Padding for buttons */
-            border: none;
-            border-radius: 3px; /* Rounded corners */
-            background-color: #007bff; /* Blue background */
-            color: white; /* White text */
-            cursor: pointer; /* Pointer cursor on hover */
-        }
-        button:hover {
-            background-color: #0056b3; /* Darker blue on hover */
-        }
-    </style>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <h1>Upload Video File</h1>
     <input type="file" id="file-input" accept=".mp4, .avi, .mkv, .mov, .wmv, .flv, .webm, .mpeg, .mpg, .3gp">
     <button id="upload-button">Upload</button>
     
-    <h2>Audio Conversion Progress</h2>
-    <progress id="audio-progress-bar" value="0" max="100"></progress>
-    
-    <h2>Transcription Progress</h2>
-    <progress id="transcription-progress-bar" value="0" max="100"></progress>
+    <div id="status" style="display: none;" aria-live="polite">
+        <span class="spinner" aria-hidden="true"></span> 
+        <span>Processing...</span>
+        <div id="progress">
+            <div>Audio Conversion Progress: <span id="audio-progress">0</span>%</div>
+            <div>Transcription Progress: <span id="transcription-progress">0</span>%</div>
+        </div>
+    </div>
+
+    <div id="error-message" style="display: none;" aria-live="assertive"></div>
 
     <div id="transcription-links">
         <h2>Transcription Files</h2>
         <div id="transcriptions"></div>
     </div>
 
-    <script>
-        document.getElementById("upload-button").onclick = async function() {
-            const fileInput = document.getElementById("file-input");
-            if (fileInput.files.length === 0) {
-                alert("Please select a file to upload.");
-                return;
-            }
-            const formData = new FormData();
-            formData.append("file", fileInput.files[0]);
-
-            const response = await fetch("/upload/", {
-                method: "POST",
-                body: formData,
-            });
-
-            if (response.ok) {
-                alert("File uploaded successfully!");
-                checkProgress();
-                listTranscriptions();  // Update transcription list after upload
-            } else {
-                alert("Error uploading file.");
-            }
-        };
-
-        async function checkProgress() {
-            const interval = setInterval(async () => {
-                const progressResponse = await fetch("/progress/");
-                const { progress_audio_conversion, progress_transcription, is_processing } = await progressResponse.json();
-
-                document.getElementById("audio-progress-bar").value = progress_audio_conversion;
-                document.getElementById("transcription-progress-bar").value = progress_transcription;
-
-                if (progress_audio_conversion >= 100 && !is_processing) {
-                    clearInterval(interval);
-                }
-            }, 1000); // Check progress every second
-        }
-
-        async function listTranscriptions() {
-            const response = await fetch("/transcription/");
-            const { transcriptions } = await response.json();
-
-            const transcriptionContainer = document.getElementById("transcriptions");
-            transcriptionContainer.innerHTML = ''; // Clear existing links
-            transcriptions.forEach(filename => {
-                const item = document.createElement('div');
-                item.className = 'transcription-item';
-                item.innerHTML = `
-                    <span>${filename}</span>
-                    <button onclick="downloadTranscription('${filename}')">Download</button>
-                `;
-                transcriptionContainer.appendChild(item);
-            });
-        }
-
-        function downloadTranscription(filename) {
-            const link = document.createElement('a');
-            link.href = `/transcription/${filename}`;
-            link.download = filename; // Set the download attribute
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link); // Clean up the DOM
-        }
-
-        // Call the function on page load to populate existing transcriptions
-        window.onload = listTranscriptions;
-    </script>
+    <script src="/static/script.js"></script>
 </body>
 </html>

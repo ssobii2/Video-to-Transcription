@@ -5,8 +5,6 @@ document.getElementById("upload-button").onclick = async function() {
         return;
     }
 
-    initializeWebSocket();
-
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
     
@@ -24,6 +22,7 @@ document.getElementById("upload-button").onclick = async function() {
                 document.getElementById("file-input").value = "";  // Reset file input
             } else {
                 listTranscriptions();
+                document.getElementById("file-input").value = "";  // Reset file input
             }
         } else {
             displayError(responseData.error || "Error uploading file.");
@@ -42,53 +41,6 @@ document.getElementById("upload-button").onclick = async function() {
     clearError();
     document.getElementById("upload-button").disabled = true;
 };
-
-let socket;
-
-function initializeWebSocket() {
-    socket = new WebSocket("ws://localhost:8000/ws/progress/");
-
-    socket.onopen = function() {
-        console.log('WebSocket connection established');
-    };
-
-    socket.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        console.log('WebSocket message received:', data); // Debugging
-
-        const {
-            progress_audio_conversion,
-            progress_transcription,
-            is_processing
-        } = data;
-
-        updateProgress(progress_audio_conversion, progress_transcription);
-
-        // Close WebSocket after processing is complete
-        if (!is_processing) {
-            document.getElementById("status").style.display = "none";
-            document.getElementById("upload-button").disabled = false;
-            document.getElementById("file-input").value = "";  // Reset file input
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.close();
-                console.log('WebSocket connection closed'); // Debugging
-            }
-        }
-    };
-
-    socket.onerror = function(error) {
-        console.error("WebSocket Error: ", error.message);
-    };
-
-    socket.onclose = function(event) {
-        console.log('WebSocket connection closed:', event);
-    };
-}
-
-function updateProgress(audioProgress, transcriptionProgress) {
-    document.getElementById("audio-progress").innerText = audioProgress.toFixed(0);
-    document.getElementById("transcription-progress").innerText = transcriptionProgress.toFixed(0);
-}
 
 function displayError(message) {
     const errorMessageElement = document.getElementById("error-message");

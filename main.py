@@ -1,11 +1,8 @@
 import os
 import subprocess
-import threading
-import re
 import whisper
 import torch
-import asyncio
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,14 +31,6 @@ os.makedirs(TRANSCRIPTION_FOLDER, exist_ok=True)
 # Static file serving setup
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Global progress variables
-progress_audio_conversion = 0
-progress_transcription = 0
-is_processing = False
-
-# WebSocket connections
-active_connections = []
-
 def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -58,54 +47,9 @@ def get_video_duration(video_file_path: str) -> float:
     duration = float(subprocess.check_output(ffprobe_command).strip())
     return duration
 
-async def send_progress_updates():
-    """Send progress updates to all active WebSocket connections."""
-    while is_processing:
-        for connection in active_connections:
-            await connection.send_json({
-                "progress_audio_conversion": progress_audio_conversion,
-                "progress_transcription": progress_transcription,
-                "is_processing": is_processing
-            })
-        await asyncio.sleep(1)  # Send updates every second
-
-def update_audio_conversion_progress(process, total_duration: float):
-    global progress_audio_conversion
-    while True:
-        output = process.stderr.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            match = re.search(r'time=(\d+:\d+:\d+\.\d+)', output)
-            if match:
-                time_str = match.group(1)
-                h, m, s = map(float, time_str.split(':'))
-                current_time = h * 3600 + m * 60 + s
-
-                # Update progress information
-                progress_audio_conversion = (current_time / total_duration) * 100
-                
-                # Log progress for debugging
-                print(f"Audio conversion progress: {progress_audio_conversion:.2f}%")
-
-def end_conversion_on_completion(process):
-    """Waits for the FFmpeg process to complete."""
-    global progress_audio_conversion
-    process.wait()
-    if process.returncode == 0:
-        progress_audio_conversion = 100
-    else:
-        print("Error: FFmpeg process failed.")
-    return process.returncode
-
 async def convert_video_to_audio(video_file_path: str):
-    global progress_audio_conversion, is_processing
-    is_processing = True
-    progress_audio_conversion = 0
-
     if not allowed_file(video_file_path):
         print("Error: Invalid file format.")
-        is_processing = False
         return
 
     audio_filename = f"{os.path.splitext(os.path.basename(video_file_path))[0]}.mp3"
@@ -113,7 +57,7 @@ async def convert_video_to_audio(video_file_path: str):
 
     command = [
         'ffmpeg', '-i', video_file_path, '-q:a', '0', '-map', 'a',
-        audio_file_path, '-hide_banner', '-loglevel', 'info'
+        audio_file_path, '-hide_banner', '-loglevel', 'error'
     ]
 
     if is_nvidia_gpu_available():
@@ -124,52 +68,38 @@ async def convert_video_to_audio(video_file_path: str):
         print("Using CPU for conversion.")
 
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-    total_duration = get_video_duration(video_file_path)
-    progress_thread = threading.Thread(
-        target=update_audio_conversion_progress,
-        args=(process, total_duration),
-        daemon=True
-    )
-    progress_thread.start()
-
-    await asyncio.get_event_loop().run_in_executor(None, end_conversion_on_completion, process)
+    process.wait()
 
     if process.returncode == 0:
         print(f"Conversion successful! Audio file saved as: {audio_filename}")
         await transcribe_audio_with_whisper(audio_file_path)
+    else:
+        print("Error: FFmpeg process failed.")
 
     if os.path.exists(video_file_path):
         os.remove(video_file_path)
 
-    is_processing = False
-    await send_progress_updates()
-
 async def transcribe_audio_with_whisper(audio_file_path: str):
-    global progress_transcription, is_processing
     print("Starting transcription with Whisper...")
 
     device = "cuda" if is_nvidia_gpu_available() else "cpu"
+    if is_nvidia_gpu_available():
+        print("Using NVIDIA GPU for transcription.")
+    else:
+        print("Using CPU for transcription.")
     model = whisper.load_model("base", device=device)
 
-    audio_duration = get_video_duration(audio_file_path)
     transcription = model.transcribe(audio_file_path)
-
     transcription_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}.txt"
     transcription_file_path = os.path.join(TRANSCRIPTION_FOLDER, transcription_filename)
 
     with open(transcription_file_path, 'w') as f:
         f.write(transcription['text'])
 
-    progress_transcription = 100
     print(f"Transcription saved as {transcription_filename}")
 
     if os.path.exists(audio_file_path):
         os.remove(audio_file_path)
-
-    is_processing = False
-    await send_progress_updates()
-    print("Transcription complete and processed")
 
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...)):
@@ -195,19 +125,6 @@ async def upload_file(file: UploadFile = File(...)):
 async def get_frontend():
     with open("static/index.html") as f:
         return HTMLResponse(content=f.read())
-
-@app.websocket("/ws/progress/")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    active_connections.append(websocket)
-    try:
-        while is_processing:
-            await asyncio.sleep(1)  # Keep the connection alive
-    except WebSocketDisconnect:
-        active_connections.remove(websocket)
-        print("WebSocket connection closed")
-    finally:
-        await websocket.close()
 
 @app.get("/transcription/")
 async def list_transcriptions():

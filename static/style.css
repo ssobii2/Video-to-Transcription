@@ -8,43 +8,51 @@ body {
     margin: 0;
     background-color: #f4f4f4;
 }
+
 input[type="file"] {
     margin-bottom: 20px;
+    margin-left: 70px;
 }
-#loading {
-    display: none;
-    margin-top: 20px;
-    font-size: 1.2em;
-}
-#remaining-time {
-    margin-top: 10px;
-}
+
 #error-message {
     color: red;
     margin-top: 20px;
     display: none;
 }
+
 #transcription-links {
     margin-top: 20px;
     width: 100%;
-    max-width: 400px;
+    max-width: 500px;
     padding: 10px;
     background: #fff;
     border: 1px solid #ccc;
     border-radius: 5px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
+
 .transcription-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-top: 10px;
-    padding: 5px;
+    padding: 10px;
     border-bottom: 1px solid #eee;
+    font-size: 14px;
 }
+
 .transcription-item:last-child {
     border-bottom: none;
 }
+
+.transcription-item span {
+    flex-grow: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    margin-right: 10px;
+}
+
 button {
     padding: 5px 10px;
     border: none;
@@ -52,10 +60,20 @@ button {
     background-color: #007bff;
     color: white;
     cursor: pointer;
+    margin-left: 5px;
+    min-width: 80px;
 }
+
 button:hover {
     background-color: #0056b3;
 }
+
+#status {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+}
+
 .spinner {
     border: 4px solid rgba(0, 0, 0, 0.1);
     border-left-color: #007bff;
@@ -64,7 +82,9 @@ button:hover {
     height: 24px;
     animation: spin 1s linear infinite;
     display: inline-block;
+    vertical-align: middle;
 }
+
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }

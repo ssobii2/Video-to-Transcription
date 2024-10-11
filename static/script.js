@@ -7,26 +7,24 @@ document.getElementById("upload-button").onclick = async function() {
 
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
-    
+
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/upload/");
-    
+
     xhr.onload = function() {
         const responseData = JSON.parse(xhr.responseText);
         document.getElementById("status").style.display = "none";
-        
+        document.getElementById("file-input").value = "";
+        document.getElementById("upload-button").disabled = false;
+
         if (xhr.status === 200) {
             if (responseData.error) {
                 displayError(responseData.error);
-                document.getElementById("upload-button").disabled = false;
-                document.getElementById("file-input").value = "";  // Reset file input
             } else {
                 listTranscriptions();
-                document.getElementById("file-input").value = "";  // Reset file input
             }
         } else {
             displayError(responseData.error || "Error uploading file.");
-            document.getElementById("upload-button").disabled = false;
         }
     };
 

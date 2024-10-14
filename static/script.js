@@ -92,4 +92,43 @@ async function deleteTranscription(filename) {
     }
 }
 
+const socket = new WebSocket(`ws://${window.location.host}/ws`);
+
+socket.onmessage = function(event) {
+    const message = event.data;
+    updateProgress(message);
+};
+
+socket.onopen = function() {
+    console.log("WebSocket connection established.");
+};
+
+socket.onclose = function(event) {
+    console.log("WebSocket connection closed.");
+};
+
+function updateProgress(message) {
+    const progressContainer = document.getElementById("progress-container");
+
+    let messageElement = document.getElementById("message");
+    if (!messageElement) {
+        messageElement = document.createElement('div');
+        messageElement.id = "message";
+        progressContainer.appendChild(messageElement);
+    }
+
+    if (message.includes("Estimated transcription time")) {
+        messageElement.innerText = message;
+        progressContainer.appendChild(messageElement);
+    } 
+    else if (message.includes("Whisper:")) {
+        messageElement.innerText = message;
+        progressContainer.appendChild(messageElement);
+    }
+    else {
+        messageElement.innerText = message;
+        progressContainer.appendChild(messageElement);
+    }
+}
+
 window.onload = listTranscriptions;

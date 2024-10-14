@@ -89,3 +89,10 @@ button:hover {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+#progress-container {
+    margin-top: 10px;
+}
+.progress-message {
+    margin: 5px 0;
+}

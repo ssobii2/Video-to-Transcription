@@ -99,7 +99,7 @@ async def transcribe_audio_with_whisper(audio_file_path: str):
     transcription_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}.txt"
     transcription_file_path = os.path.join(TRANSCRIPTION_FOLDER, transcription_filename)
 
-    with open(transcription_file_path, 'w') as f:
+    with open(transcription_file_path, 'w', encoding='utf-8') as f:
         f.write(transcription['text'])
 
     print(f"Transcription saved as {transcription_filename}")

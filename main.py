@@ -57,7 +57,7 @@ async def convert_video_to_audio(video_file_path: str):
 
     command = [
         'ffmpeg', '-i', video_file_path, '-q:a', '0', '-map', 'a',
-        audio_file_path, '-hide_banner', '-loglevel', 'error'
+        audio_file_path, '-hide_banner', '-loglevel', 'info'
     ]
 
     if is_nvidia_gpu_available():
@@ -68,7 +68,13 @@ async def convert_video_to_audio(video_file_path: str):
         print("Using CPU for conversion.")
 
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    process.wait()
+
+    while True:
+        output = process.stderr.readline()
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            print(output.strip())
 
     if process.returncode == 0:
         print(f"Conversion successful! Audio file saved as: {audio_filename}")
@@ -87,9 +93,9 @@ async def transcribe_audio_with_whisper(audio_file_path: str):
         print("Using NVIDIA GPU for transcription.")
     else:
         print("Using CPU for transcription.")
-    model = whisper.load_model("base", device=device)
+    model = whisper.load_model("turbo", device=device)
 
-    transcription = model.transcribe(audio_file_path)
+    transcription = model.transcribe(audio_file_path, verbose=False)
     transcription_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}.txt"
     transcription_file_path = os.path.join(TRANSCRIPTION_FOLDER, transcription_filename)
 

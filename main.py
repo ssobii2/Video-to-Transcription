@@ -148,9 +148,9 @@ async def transcribe_audio_with_whisper(audio_file_path: str):
     audio_duration = get_video_duration(audio_file_path)
 
     if device == "cuda":
-        estimated_time = audio_duration  # Real-time estimation for GPU
+        estimated_time = audio_duration * 0.2  # Average speed on GPU
     else:
-        estimated_time = audio_duration * 10  # 1/10th speed on CPU
+        estimated_time = audio_duration * 3  # Average speed on CPU
 
     # Format estimated time to be user-friendly
     formatted_estimated_time = format_time(estimated_time)

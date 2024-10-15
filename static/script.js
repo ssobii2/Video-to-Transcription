@@ -8,36 +8,38 @@ document.getElementById("upload-button").onclick = async function() {
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/upload/");
+    clearError();
+    clearProgress();
 
-    xhr.onload = function() {
-        const responseData = JSON.parse(xhr.responseText);
+    document.getElementById("status").style.display = "block";
+    document.getElementById("upload-button").disabled = true;
+
+    try {
+        const response = await fetch("/upload/", {
+            method: "POST",
+            body: formData,
+        });
+
         document.getElementById("status").style.display = "none";
         document.getElementById("file-input").value = "";
         document.getElementById("upload-button").disabled = false;
 
-        if (xhr.status === 200) {
+        if (response.ok) {
+            const responseData = await response.json();
             if (responseData.error) {
                 displayError(responseData.error);
             } else {
                 listTranscriptions();
             }
         } else {
+            const responseData = await response.json();
             displayError(responseData.error || "Error uploading file.");
         }
-    };
-
-    xhr.onerror = function() {
+    } catch (error) {
         displayError("Error uploading file.");
         document.getElementById("status").style.display = "none";
         document.getElementById("upload-button").disabled = false;
-    };
-
-    xhr.send(formData);
-    document.getElementById("status").style.display = "block";
-    clearError();
-    document.getElementById("upload-button").disabled = true;
+    }
 };
 
 function displayError(message) {
@@ -52,22 +54,37 @@ function clearError() {
     errorMessageElement.style.display = "none";
 }
 
-async function listTranscriptions() {
-    const response = await fetch("/transcription/");
-    const { transcriptions } = await response.json();
+function clearProgress() {
+    const messageElement = document.getElementById("message");
+    if (messageElement) {
+        messageElement.innerText = "";
+    }
+}
 
-    const transcriptionContainer = document.getElementById("transcriptions");
-    transcriptionContainer.innerHTML = '';
-    transcriptions.forEach(filename => {
-        const item = document.createElement('div');
-        item.className = 'transcription-item';
-        item.innerHTML = `
-            <span>${filename}</span>
-            <button onclick="downloadTranscription('${filename}')">Download</button>
-            <button onclick="deleteTranscription('${filename}')">Delete</button>
-        `;
-        transcriptionContainer.appendChild(item);
-    });
+async function listTranscriptions() {
+    try {
+        const response = await fetch("/transcription/");
+        if (response.ok) {
+            const { transcriptions } = await response.json();
+
+            const transcriptionContainer = document.getElementById("transcriptions");
+            transcriptionContainer.innerHTML = '';
+            transcriptions.forEach(filename => {
+                const item = document.createElement('div');
+                item.className = 'transcription-item';
+                item.innerHTML = `
+                    <span>${filename}</span>
+                    <button onclick="downloadTranscription('${filename}')">Download</button>
+                    <button onclick="deleteTranscription('${filename}')">Delete</button>
+                `;
+                transcriptionContainer.appendChild(item);
+            });
+        } else {
+            displayError("Error fetching transcriptions.");
+        }
+    } catch (error) {
+        displayError("Error fetching transcriptions.");
+    }
 }
 
 function downloadTranscription(filename) {
@@ -80,18 +97,23 @@ function downloadTranscription(filename) {
 }
 
 async function deleteTranscription(filename) {
-    const response = await fetch(`/transcription/${filename}`, {
-        method: 'DELETE',
-    });
+    try {
+        const response = await fetch(`/transcription/${filename}`, {
+            method: 'DELETE',
+        });
 
-    if (response.ok) {
-        listTranscriptions();
-    } else {
-        const errorData = await response.json();
-        displayError(errorData.error || "Error deleting transcription.");
+        if (response.ok) {
+            listTranscriptions();
+        } else {
+            const errorData = await response.json();
+            displayError(errorData.error || "Error deleting transcription.");
+        }
+    } catch (error) {
+        displayError("Error deleting transcription.");
     }
 }
 
+// Establish WebSocket connection
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
 socket.onmessage = function(event) {
@@ -108,27 +130,8 @@ socket.onclose = function(event) {
 };
 
 function updateProgress(message) {
-    const progressContainer = document.getElementById("progress-container");
-
-    let messageElement = document.getElementById("message");
-    if (!messageElement) {
-        messageElement = document.createElement('div');
-        messageElement.id = "message";
-        progressContainer.appendChild(messageElement);
-    }
-
-    if (message.includes("Estimated transcription time")) {
-        messageElement.innerText = message;
-        progressContainer.appendChild(messageElement);
-    } 
-    else if (message.includes("Whisper:")) {
-        messageElement.innerText = message;
-        progressContainer.appendChild(messageElement);
-    }
-    else {
-        messageElement.innerText = message;
-        progressContainer.appendChild(messageElement);
-    }
+    const messageElement = document.getElementById("message");
+    messageElement.innerText = message;
 }
 
 window.onload = listTranscriptions;

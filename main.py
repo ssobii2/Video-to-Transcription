@@ -194,7 +194,7 @@ async def transcribe_audio_with_whisper(audio_file_path: str):
             estimated_remaining_time = estimated_total_time - elapsed_time
             formatted_remaining_time = format_time(max(estimated_remaining_time, 0))
             await manager.send_message(
-                f"Whisper Transcription: Approximately {formatted_remaining_time} remaining",
+                f"Whisper Transcription: Approximately {formatted_remaining_time} remaining (NOT REAL TIME)",
                 overwrite=True
             )
             await asyncio.sleep(2)

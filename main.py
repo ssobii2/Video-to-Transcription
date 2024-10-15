@@ -232,8 +232,8 @@ async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
 
         gpt_response = await use_openai_async(transcription_text, prompt)
 
-        gpt_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}_ai_response.txt"
-        gpt_file_path = os.path.join(AI_RESPONSES_FOLDER, gpt_filename)
+        gpt_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}_gpt_response.txt"
+        gpt_file_path = os.path.join(TRANSCRIPTION_FOLDER, gpt_filename)
 
         with open(gpt_file_path, 'w', encoding='utf-8') as f:
             f.write(gpt_response)

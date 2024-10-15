@@ -1,16 +1,18 @@
 document.getElementById("upload-button").onclick = async function() {
     const fileInput = document.getElementById("file-input");
+    const promptInput = document.getElementById("prompt-input");
+    
     if (fileInput.files.length === 0) {
         displayError("Please select a file to upload.");
         return;
     }
-
+    
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
-
+    formData.append("prompt", promptInput.value);
+    
     clearError();
     clearProgress();
-
     document.getElementById("status").style.display = "block";
     document.getElementById("upload-button").disabled = true;
 

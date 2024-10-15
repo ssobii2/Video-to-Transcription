@@ -19,18 +19,29 @@ input[type="file"] {
     display: none;
 }
 
-#transcription-links {
-    margin-top: 20px;
+#files-container {
+    display: flex;
+    justify-content: space-between;
     width: 100%;
-    max-width: 500px;
+    max-width: 1100px;
+    margin-top: 20px;
+}
+
+#transcription-links, #ai-response-links {
+    width: 48%;
     padding: 10px;
     background: #fff;
     border: 1px solid #ccc;
     border-radius: 5px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    margin-right: 10px;
 }
 
-.transcription-item {
+#transcription-links h2, #ai-response-links h2 {
+    text-align: center;
+}
+
+.transcription-item, .ai-response-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -40,11 +51,11 @@ input[type="file"] {
     font-size: 14px;
 }
 
-.transcription-item:last-child {
+.transcription-item:last-child, .ai-response-item:last-child {
     border-bottom: none;
 }
 
-.transcription-item span {
+.transcription-item span, .ai-response-item span {
     flex-grow: 1;
     overflow: hidden;
     white-space: nowrap;
@@ -92,6 +103,26 @@ button:hover {
 #progress-container {
     margin-top: 10px;
 }
+
 .progress-message {
     margin: 5px 0;
+}
+
+#prompt-input {
+    width: 100%;
+    max-width: 500px;
+    padding: 10px;
+    border: 2px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+    font-family: Arial, sans-serif;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+    transition: border-color 0.3s, box-shadow 0.3s;
+    margin-bottom: 20px;
+}
+
+#prompt-input:focus {
+    border-color: #66afe9;
+    box-shadow: 0 0 8px rgba(102, 175, 233, 0.6);
+    outline: none;
 }

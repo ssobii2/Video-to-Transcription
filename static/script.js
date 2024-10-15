@@ -2,8 +2,6 @@ document.getElementById("upload-button").onclick = async function() {
     const fileInput = document.getElementById("file-input");
     const promptInput = document.getElementById("prompt-input");
     
-    const promptInput = document.getElementById("prompt-input");
-    
     if (fileInput.files.length === 0) {
         displayError("Please select a file to upload.");
         return;

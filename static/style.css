@@ -1,22 +1,40 @@
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Roboto', sans-serif;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100vh;
     margin: 0;
-    background-color: #f4f4f4;
+    background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
 }
 
 input[type="file"] {
+    display: none;
+}
+
+label[for="file-input"] {
+    display: inline-block;
     margin-bottom: 20px;
+    padding: 10px 20px;
+    border: 2px solid #007bff;
+    border-radius: 5px;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+label[for="file-input"]:hover {
+    background-color: #0056b3;
+    border-color: #0056b3;
 }
 
 #error-message {
-    color: red;
+    color: #ff4d4d;
     margin-top: 20px;
     display: none;
+    font-weight: bold;
 }
 
 #files-container {
@@ -29,16 +47,18 @@ input[type="file"] {
 
 #transcription-links, #ai-response-links {
     width: 48%;
-    padding: 10px;
+    padding: 20px;
     background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
     margin-right: 10px;
 }
 
 #transcription-links h2, #ai-response-links h2 {
     text-align: center;
+    font-size: 18px;
+    color: #333;
 }
 
 .transcription-item, .ai-response-item {
@@ -46,9 +66,9 @@ input[type="file"] {
     justify-content: space-between;
     align-items: center;
     margin-top: 10px;
-    padding: 10px;
+    padding: 15px;
     border-bottom: 1px solid #eee;
-    font-size: 14px;
+    font-size: 16px;
 }
 
 .transcription-item:last-child, .ai-response-item:last-child {
@@ -64,18 +84,19 @@ input[type="file"] {
 }
 
 button {
-    padding: 5px 10px;
+    padding: 10px 20px;
     border: none;
-    border-radius: 3px;
-    background-color: #007bff;
+    border-radius: 5px;
+    background: linear-gradient(135deg, #007bff, #0056b3);
     color: white;
     cursor: pointer;
     margin-left: 5px;
-    min-width: 80px;
+    min-width: 100px;
+    transition: background 0.3s;
 }
 
 button:hover {
-    background-color: #0056b3;
+    background: linear-gradient(135deg, #0056b3, #003f7f);
 }
 
 #status {
@@ -88,9 +109,9 @@ button:hover {
     border: 4px solid rgba(0, 0, 0, 0.1);
     border-left-color: #007bff;
     border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    animation: spin 1s linear infinite;
+    width: 30px;
+    height: 30px;
+    animation: spin 0.8s linear infinite;
     display: inline-block;
     vertical-align: middle;
 }
@@ -106,23 +127,25 @@ button:hover {
 
 .progress-message {
     margin: 5px 0;
+    font-size: 14px;
+    color: #555;
 }
 
 #prompt-input {
     width: 100%;
     max-width: 500px;
-    padding: 10px;
+    padding: 15px;
     border: 2px solid #ccc;
-    border-radius: 5px;
+    border-radius: 10px;
     font-size: 16px;
-    font-family: Arial, sans-serif;
-    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+    font-family: 'Roboto', sans-serif;
+    box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.1);
     transition: border-color 0.3s, box-shadow 0.3s;
     margin-bottom: 20px;
 }
 
 #prompt-input:focus {
     border-color: #66afe9;
-    box-shadow: 0 0 8px rgba(102, 175, 233, 0.6);
+    box-shadow: 0 0 10px rgba(102, 175, 233, 0.6);
     outline: none;
 }

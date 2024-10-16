@@ -6,7 +6,6 @@ import time
 import uvicorn
 import asyncio
 import threading
-from pathlib import Path
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form
@@ -173,9 +172,9 @@ if is_nvidia_gpu_available():
 else:
     print("Using CPU for transcription.")
 
-model = whisper.load_model("base", device=device)
+model = whisper.load_model("turbo", device=device)
 
-client = AsyncOpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+client = AsyncOpenAI()
 
 async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
     print("Starting transcription with Whisper...")
@@ -230,20 +229,27 @@ async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
 
         print(f"Transcription saved as {transcription_filename}")
 
-        gpt_response = await use_openai_async(transcription_text, prompt)
-
-        gpt_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}_gpt_response.txt"
-        gpt_file_path = os.path.join(TRANSCRIPTION_FOLDER, gpt_filename)
-
-        with open(gpt_file_path, 'w', encoding='utf-8') as f:
-            f.write(gpt_response)
+        await asyncio.sleep(2)
 
         await manager.send_message(
-            f"AI response saved as {gpt_filename}",
+            "Generating AI response...",
             overwrite=True
         )
 
-        print(f"GPT response saved as {gpt_filename}")
+        ai_response = await use_openai_async(transcription_text, prompt)
+
+        ai_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}_ai_response.txt"
+        ai_file_path = os.path.join(AI_RESPONSES_FOLDER, ai_filename)
+
+        with open(ai_file_path, 'w', encoding='utf-8') as f:
+            f.write(ai_response)
+
+        await manager.send_message(
+            f"AI response saved as {ai_filename}",
+            overwrite=True
+        )
+
+        print(f"AI response saved as {ai_filename}")
 
     except Exception as e:
         print(f"Error during transcription: {e}")

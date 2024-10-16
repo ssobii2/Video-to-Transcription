@@ -1,3 +1,13 @@
+document.getElementById("file-input").addEventListener("change", function() {
+    const fileInput = document.getElementById("file-input");
+    const fileLabel = document.getElementById("file-label");
+    if (fileInput.files.length > 0) {
+        fileLabel.textContent = truncateFileName(fileInput.files[0].name, 40);
+    } else {
+        fileLabel.textContent = "Choose File";
+    }
+});
+
 document.getElementById("upload-button").onclick = async function() {
     const fileInput = document.getElementById("file-input");
     const promptInput = document.getElementById("prompt-input");
@@ -26,6 +36,7 @@ document.getElementById("upload-button").onclick = async function() {
 
         document.getElementById("status").style.display = "none";
         document.getElementById("file-input").value = "";
+        document.getElementById("file-label").textContent = "Choose File";
         document.getElementById("prompt-input").value = "";
         document.getElementById("upload-button").disabled = false;
 
@@ -47,6 +58,15 @@ document.getElementById("upload-button").onclick = async function() {
         document.getElementById("upload-button").disabled = false;
     }
 };
+
+function truncateFileName(fileName, maxLength) {
+    if (fileName.length <= maxLength) {
+        return fileName;
+    }
+    const extension = fileName.split('.').pop();
+    const truncatedName = fileName.substring(0, maxLength - extension.length - 3);
+    return `${truncatedName}...${extension}`;
+}
 
 function displayError(message) {
     const errorMessageElement = document.getElementById("error-message");
@@ -171,7 +191,6 @@ async function deleteAIResponse(filename) {
     }
 }
 
-// Establish WebSocket connection
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
 socket.onmessage = function(event) {
@@ -185,6 +204,11 @@ socket.onopen = function() {
 
 socket.onclose = function(event) {
     console.log("WebSocket connection closed.");
+};
+
+socket.onerror = function(error) {
+    console.error("WebSocket error:", error);
+    socket.close();
 };
 
 function updateProgress(message) {

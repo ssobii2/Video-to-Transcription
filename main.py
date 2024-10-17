@@ -69,13 +69,24 @@ def is_nvidia_gpu_available() -> bool:
     return torch.cuda.is_available()
 
 def get_video_duration(video_file_path: str) -> float:
-    """Get the duration of the video using ffprobe."""
-    ffprobe_command = [
-        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1', video_file_path
-    ]
-    duration = float(subprocess.check_output(ffprobe_command).strip())
-    return duration
+     """Get the duration of the video using ffprobe."""
+     ffprobe_command = [
+         'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+         '-of', 'default=noprint_wrappers=1:nokey=1', video_file_path
+     ]
+
+     try:
+         output = subprocess.check_output(ffprobe_command).strip().decode('utf-8')
+         if output == 'N/A' or not output:
+             raise ValueError(f"Could not retrieve duration for file: {video_file_path}")
+         duration = float(output)
+         return duration
+     except subprocess.CalledProcessError as e:
+         print(f"Error running ffprobe: {e}")
+         raise
+     except ValueError as e:
+         print(f"Error parsing duration: {e}")
+         raise
 
 def format_time(seconds: float) -> str:
     """Format seconds into a human-readable time string."""
@@ -101,70 +112,88 @@ async def delete_folder_contents(folder: str):
             os.rmdir(file_path)
 
 async def convert_video_to_audio(video_file_path: str, prompt: str):
-    if not allowed_file(video_file_path):
-        print("Error: Invalid file format.")
-        await delete_folder_contents(INPUT_FOLDER)
-        await delete_folder_contents(OUTPUT_FOLDER)
-        await delete_folder_contents(TRANSCRIPTION_FOLDER)
-        await delete_folder_contents(AI_RESPONSES_FOLDER)
-        return
+     if not allowed_file(video_file_path):
+         print("Error: Invalid file format.")
+         await delete_folder_contents(INPUT_FOLDER)
+         await delete_folder_contents(OUTPUT_FOLDER)
+         await delete_folder_contents(TRANSCRIPTION_FOLDER)
+         await delete_folder_contents(AI_RESPONSES_FOLDER)
+         return
 
-    audio_filename = f"{os.path.splitext(os.path.basename(video_file_path))[0]}.mp3"
-    audio_file_path = os.path.join(OUTPUT_FOLDER, audio_filename)
+     audio_filename = f"{os.path.splitext(os.path.basename(video_file_path))[0]}.mp3"
+     audio_file_path = os.path.join(OUTPUT_FOLDER, audio_filename)
 
-    command = [
-        'ffmpeg', '-i', video_file_path, '-vn', '-acodec', 'libmp3lame', '-q:a', '2',
-        audio_file_path, '-hide_banner', '-loglevel', 'info'
-    ]
+     command = [
+         'ffmpeg', '-i', video_file_path, '-vn', '-acodec', 'libmp3lame', '-q:a', '2',
+         audio_file_path, '-hide_banner', '-loglevel', 'info'
+     ]
 
-    if is_nvidia_gpu_available():
-        command.insert(1, '-hwaccel')
-        command.insert(2, 'cuda')
-        print("Using NVIDIA GPU for conversion.")
-    else:
-        print("Using CPU for conversion.")
+     if is_nvidia_gpu_available():
+         command.insert(1, '-hwaccel')
+         command.insert(2, 'cuda')
+         print("Using NVIDIA GPU for conversion.")
+     else:
+         print("Using CPU for conversion.")
 
-    try:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        total_duration = get_video_duration(video_file_path)
+     try:
+         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)       
+         total_duration = get_video_duration(video_file_path)
 
-        while True:
-            output = process.stderr.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                # Parse the progress from FFmpeg output
-                if "time=" in output:
-                    time_str = output.split("time=")[1].split(" ")[0]
-                    time_parts = list(map(float, time_str.split(':')))
-                    current_time_seconds = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2]
+         last_valid_time = 0
 
-                    remaining_time = total_duration - current_time_seconds
-                    formatted_remaining_time = format_time(max(remaining_time, 0))
-                    await manager.send_message(
-                        f"Video to Audio: {formatted_remaining_time} remaining",
-                        overwrite=True
-                    )
+         while True:
+             output = process.stderr.readline()
+             if output == '' and process.poll() is not None:
+                 break
+             if output:
+                 if "time=" in output:
+                     time_str = output.split("time=")[1].split(" ")[0]
 
-        if process.returncode == 0:
-            print(f"Conversion successful! Audio file saved as: {audio_filename}")
-            await transcribe_audio_with_whisper(audio_file_path, prompt)
-        else:
-            print("Error: FFmpeg process failed.")
-            await delete_folder_contents(INPUT_FOLDER)
-            await delete_folder_contents(OUTPUT_FOLDER)
-            await delete_folder_contents(TRANSCRIPTION_FOLDER)
-            await delete_folder_contents(AI_RESPONSES_FOLDER)
+                     if time_str == 'N/A':
+                         print("FFmpeg returned 'N/A' for the current time.")
+                         formatted_remaining_time = format_time(max(total_duration - last_valid_time, 0))     
+                         await manager.send_message(
+                             f"Video to Audio: {formatted_remaining_time} remaining (last known progress)",   
+                             overwrite=True
+                         )
+                         continue
 
-    except Exception as e:
-        print(f"Error during video conversion: {e}")
-        await delete_folder_contents(INPUT_FOLDER)
-        await delete_folder_contents(OUTPUT_FOLDER)
-        await delete_folder_contents(TRANSCRIPTION_FOLDER)
-        await delete_folder_contents(AI_RESPONSES_FOLDER)
+                     try:
+                         time_parts = list(map(float, time_str.split(':')))
+                         current_time_seconds = time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2]     
 
-    if os.path.exists(video_file_path):
-        os.remove(video_file_path)
+                         last_valid_time = current_time_seconds
+
+                         remaining_time = total_duration - current_time_seconds
+                         formatted_remaining_time = format_time(max(remaining_time, 0))
+
+                         await manager.send_message(
+                             f"Video to Audio: {formatted_remaining_time} remaining",
+                             overwrite=True
+                         )
+                     except ValueError as e:
+                         print(f"Error parsing FFmpeg time: {e}")
+                         continue
+
+         if process.returncode == 0:
+             print(f"Conversion successful! Audio file saved as: {audio_filename}")
+             await transcribe_audio_with_whisper(audio_file_path, prompt)
+         else:
+             print("Error: FFmpeg process failed.")
+             await delete_folder_contents(INPUT_FOLDER)
+             await delete_folder_contents(OUTPUT_FOLDER)
+             await delete_folder_contents(TRANSCRIPTION_FOLDER)
+             await delete_folder_contents(AI_RESPONSES_FOLDER)
+
+     except Exception as e:
+         print(f"Error during video conversion: {e}")
+         await delete_folder_contents(INPUT_FOLDER)
+         await delete_folder_contents(OUTPUT_FOLDER)
+         await delete_folder_contents(TRANSCRIPTION_FOLDER)
+         await delete_folder_contents(AI_RESPONSES_FOLDER)
+
+     if os.path.exists(video_file_path):
+         os.remove(video_file_path)
 
 device = "cuda" if is_nvidia_gpu_available() else "cpu"
 if is_nvidia_gpu_available():
@@ -172,7 +201,7 @@ if is_nvidia_gpu_available():
 else:
     print("Using CPU for transcription.")
 
-model = whisper.load_model("turbo", device=device)
+model = whisper.load_model("base", device=device)
 
 client = AsyncOpenAI()
 

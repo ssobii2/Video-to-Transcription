@@ -17,7 +17,7 @@ This project is a web-based application that allows users to upload video files,
 
 Before running the project locally, ensure you have the following installed/ready:
 
-- **Python 3.11**: The project uses Python for the backend.
+- **Python 3.11 (Preffered)**: The project uses Python for the backend.
 - **FFmpeg**: Required for video-to-audio conversion.
 - **OpenAI API Key**: You'll need an API key from OpenAI to use their services (Mandatory for now).
 

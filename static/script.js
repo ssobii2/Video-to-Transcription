@@ -11,47 +11,73 @@ document.getElementById("file-input").addEventListener("change", function() {
 document.getElementById("upload-button").onclick = async function() {
     const fileInput = document.getElementById("file-input");
     const promptInput = document.getElementById("prompt-input");
-    
+    const progressBar = document.getElementById("progress-bar");
+    const progressMessage = document.getElementById("progress-message");
+
     if (fileInput.files.length === 0) {
         displayError("Please select a file to upload.");
         return;
     }
-    
-    
+
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
     const prompt = promptInput.value.trim() || "Summarize in Points";
     formData.append("prompt", prompt);
-    
+
     clearError();
     clearProgress();
     document.getElementById("status").style.display = "block";
     document.getElementById("upload-button").disabled = true;
 
     try {
-        const response = await fetch("/upload/", {
-            method: "POST",
-            body: formData,
-        });
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/upload/", true);
 
-        document.getElementById("status").style.display = "none";
-        document.getElementById("file-input").value = "";
-        document.getElementById("file-label").textContent = "Choose File";
-        document.getElementById("prompt-input").value = "";
-        document.getElementById("upload-button").disabled = false;
+        xhr.upload.onprogress = function(event) {
+            if (event.lengthComputable) {
+                const percentComplete = (event.loaded / event.total) * 100;
+                progressBar.value = percentComplete;
+                progressMessage.textContent = `Upload Progress: ${Math.round(percentComplete)}%`;
 
-        if (response.ok) {
-            const responseData = await response.json();
-            if (responseData.error) {
-                displayError(responseData.error);
-            } else {
-                listTranscriptions();
-                listAIResponses();
+                if (percentComplete === 100) {
+                    progressMessage.textContent = "Upload Complete!";
+                }
             }
-        } else {
-            const responseData = await response.json();
-            displayError(responseData.error || "Error uploading file.");
-        }
+        };
+
+        xhr.onload = async function() {
+            document.getElementById("status").style.display = "none";
+            document.getElementById("file-input").value = "";
+            document.getElementById("file-label").textContent = "Choose File";
+            document.getElementById("prompt-input").value = "";
+            document.getElementById("upload-button").disabled = false;
+            
+            progressBar.style.display = "none";
+            progressMessage.textContent = "";
+
+            if (xhr.status === 200) {
+                const responseData = JSON.parse(xhr.responseText);
+                if (responseData.error) {
+                    displayError(responseData.error);
+                } else {
+                    listTranscriptions();
+                    listAIResponses();
+                }
+            } else {
+                const responseData = JSON.parse(xhr.responseText);
+                displayError(responseData.error || "Error uploading file.");
+            }
+        };
+
+        xhr.onerror = function() {
+            displayError("Error uploading file.");
+            document.getElementById("status").style.display = "none";
+            document.getElementById("upload-button").disabled = false;
+        };
+
+        progressBar.style.display = "block";
+        xhr.send(formData);
+
     } catch (error) {
         displayError("Error uploading file.");
         document.getElementById("status").style.display = "none";
@@ -195,7 +221,7 @@ const socket = new WebSocket(`ws://${window.location.host}/ws`);
 
 socket.onmessage = function(event) {
     const message = event.data;
-    updateProgress(message);
+    updateMessage(message);
 };
 
 socket.onopen = function() {
@@ -211,7 +237,7 @@ socket.onerror = function(error) {
     socket.close();
 };
 
-function updateProgress(message) {
+function updateMessage(message) {
     const messageElement = document.getElementById("message");
     messageElement.innerText = message;
 }

@@ -331,11 +331,15 @@ async def upload_file(file: UploadFile = File(...), prompt: str = Form(...)):
 
     try:
         with open(video_file_path, 'wb') as f:
-            content = await file.read()
-            f.write(content)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
 
         await convert_video_to_audio(video_file_path, prompt)
         return {"filename": file.filename, "status": "Processed"}
+
     except Exception as e:
         print(f"Error during file upload: {e}")
         await delete_folder_contents(INPUT_FOLDER)

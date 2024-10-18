@@ -11,8 +11,8 @@ document.getElementById("file-input").addEventListener("change", function() {
 document.getElementById("upload-button").onclick = async function() {
     const fileInput = document.getElementById("file-input");
     const promptInput = document.getElementById("prompt-input");
-    const progressBar = document.getElementById("progress-bar");
-    const progressMessage = document.getElementById("progress-message");
+    const uploadProgressBar = document.getElementById("upload-progress-bar");
+    const uploadProgressMessage = document.getElementById("upload-progress-message");
 
     if (fileInput.files.length === 0) {
         displayError("Please select a file to upload.");
@@ -29,6 +29,13 @@ document.getElementById("upload-button").onclick = async function() {
     document.getElementById("status").style.display = "block";
     document.getElementById("upload-button").disabled = true;
 
+    uploadProgressBar.style.display = "block";
+    uploadProgressMessage.style.display = "block";
+    document.getElementById("upload-progress-container").style.display = "block";
+
+    uploadProgressBar.value = 0;
+    uploadProgressMessage.textContent = "";
+
     try {
         const xhr = new XMLHttpRequest();
         xhr.open("POST", "/upload/", true);
@@ -36,11 +43,17 @@ document.getElementById("upload-button").onclick = async function() {
         xhr.upload.onprogress = function(event) {
             if (event.lengthComputable) {
                 const percentComplete = (event.loaded / event.total) * 100;
-                progressBar.value = percentComplete;
-                progressMessage.textContent = `Upload Progress: ${Math.round(percentComplete)}%`;
-
-                if (percentComplete === 100) {
-                    progressMessage.textContent = "Upload Complete!";
+                uploadProgressBar.value = percentComplete;
+                uploadProgressMessage.textContent = `Upload Progress: ${Math.round(percentComplete)}%`;
+        
+                if (percentComplete >= 100) {
+                    uploadProgressMessage.textContent = "Upload Complete!";
+                    
+                    uploadProgressBar.style.display = "none";
+                    uploadProgressMessage.style.display = "none";
+                    document.getElementById("upload-progress-container").style.display = "none";
+        
+                    document.getElementById("status").style.display = "block";
                 }
             }
         };
@@ -52,8 +65,9 @@ document.getElementById("upload-button").onclick = async function() {
             document.getElementById("prompt-input").value = "";
             document.getElementById("upload-button").disabled = false;
             
-            progressBar.style.display = "none";
-            progressMessage.textContent = "";
+            uploadProgressBar.style.display = "none";
+            uploadProgressMessage.style.display = "none";
+            document.getElementById("upload-progress-container").style.display = "none";
 
             if (xhr.status === 200) {
                 const responseData = JSON.parse(xhr.responseText);
@@ -73,15 +87,23 @@ document.getElementById("upload-button").onclick = async function() {
             displayError("Error uploading file.");
             document.getElementById("status").style.display = "none";
             document.getElementById("upload-button").disabled = false;
+
+            uploadProgressBar.style.display = "none";
+            uploadProgressMessage.style.display = "none";
+            document.getElementById("upload-progress-container").style.display = "none";
         };
 
-        progressBar.style.display = "block";
+        uploadProgressBar.style.display = "block";
         xhr.send(formData);
 
     } catch (error) {
         displayError("Error uploading file.");
         document.getElementById("status").style.display = "none";
         document.getElementById("upload-button").disabled = false;
+
+        uploadProgressBar.style.display = "none";
+        uploadProgressMessage.style.display = "none";
+        document.getElementById("upload-progress-container").style.display = "none";
     }
 };
 

@@ -210,11 +210,6 @@ async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
 
     audio_duration = get_video_duration(audio_file_path)
 
-    if device == "cuda":
-        estimated_total_time = audio_duration * 0.2
-    else:
-        estimated_total_time = audio_duration * 3
-
     start_time = time.time()
 
     transcription = {}
@@ -227,15 +222,25 @@ async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
         transcription_thread = threading.Thread(target=run_transcription)
         transcription_thread.start()
 
+        # Calculate average transcription speed based on empirical data
+        average_transcription_speed = 2.84  # Adjust this value based on your data
+
         while transcription_thread.is_alive():
             elapsed_time = time.time() - start_time
-            estimated_remaining_time = estimated_total_time - elapsed_time
-            formatted_remaining_time = format_time(max(estimated_remaining_time, 0))
+
+            # Estimate the remaining time using the average transcription speed
+            estimated_total_time = audio_duration / average_transcription_speed
+            remaining_time = estimated_total_time - elapsed_time
+
+            # Format the remaining time
+            formatted_remaining_time = format_time(max(remaining_time, 0))
+
+            # Send the estimated remaining time to the WebSocket
             await manager.send_message(
-                f"Whisper Transcription: Approximately {formatted_remaining_time} remaining (NOT REAL TIME)",
+                f"Whisper Transcription: {formatted_remaining_time} remaining (ESTIMATED)",
                 overwrite=True
             )
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)  # Adjust the frequency of updates as needed
 
         transcription_thread.join()
 
@@ -324,9 +329,14 @@ async def upload_file(file: UploadFile = File(...), prompt: str = Form(...)):
         return {"error": "Invalid file format. Please upload a valid video file."}
 
     transcription_filename = f"{os.path.splitext(file.filename)[0]}.txt"
+    ai_response_filename = f"{os.path.splitext(file.filename)[0]}_ai_response.txt"
     transcription_file_path = os.path.join(TRANSCRIPTION_FOLDER, transcription_filename)
+    ai_file_path = os.path.join(AI_RESPONSES_FOLDER, ai_response_filename)
 
     if os.path.exists(transcription_file_path):
+        return {"error": "Transcription already exists. Please download it."}
+    
+    if os.path.exists(ai_file_path):
         return {"error": "Transcription already exists. Please download it."}
 
     try:

@@ -31,7 +31,7 @@ INPUT_FOLDER = 'input/'
 OUTPUT_FOLDER = 'output/'
 TRANSCRIPTION_FOLDER = 'transcription/'
 AI_RESPONSES_FOLDER = 'ai_responses/'
-ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'mpeg', 'mpg', '3gp'}
+ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'mpeg', 'mpg', '3gp', 'mp3', 'wav', 'ogg', 'm4a', 'aac'}
 
 # Ensure folders exist
 os.makedirs(INPUT_FOLDER, exist_ok=True)
@@ -120,18 +120,41 @@ async def delete_folder_contents(folder: str):
         else:
             os.rmdir(file_path)
 
-async def convert_video_to_audio(video_file_path: str, prompt: str):
-    if not allowed_file(video_file_path):
+async def convert_video_to_audio(file_path: str, prompt: str):
+    if not allowed_file(file_path):
         print("Error: Invalid file format.")
         await delete_folder_contents(INPUT_FOLDER)
         return
 
-    audio_filename = f"{os.path.splitext(os.path.basename(video_file_path))[0]}.mp3"
+    file_extension = os.path.splitext(file_path)[1].lower()
+    audio_extensions = {'.mp3', '.wav', '.ogg', '.m4a', '.aac'}
+    
+    if file_extension in audio_extensions:
+        # If it's already an audio file, copy it to output folder
+        audio_filename = os.path.basename(file_path)
+        audio_file_path = os.path.join(OUTPUT_FOLDER, audio_filename)
+        try:
+            import shutil
+            shutil.copy2(file_path, audio_file_path)
+            print("Audio file copied successfully")
+            await manager.send_message(
+                "Audio file ready for transcription!",
+                overwrite=True
+            )
+            await asyncio.sleep(1)
+            await transcribe_audio_with_whisper(audio_file_path, prompt)
+            return
+        except Exception as e:
+            print(f"Error copying audio file: {e}")
+            raise
+
+    # If it's a video file, proceed with conversion
+    audio_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}.mp3"
     audio_file_path = os.path.join(OUTPUT_FOLDER, audio_filename)
 
     command = [
         'ffmpeg',
-        '-i', video_file_path,
+        '-i', file_path,
         '-vn',
         '-acodec', 'libmp3lame',
         '-q:a', '2',
@@ -149,7 +172,7 @@ async def convert_video_to_audio(video_file_path: str, prompt: str):
         print("Using CPU for conversion.")
 
     try:
-        total_duration = get_video_duration(video_file_path)
+        total_duration = get_video_duration(file_path)
         if total_duration <= 0:
             raise ValueError("Invalid video duration")
             
@@ -230,16 +253,19 @@ async def convert_video_to_audio(video_file_path: str, prompt: str):
     finally:
         if process.poll() is None:
             process.terminate()
-        if os.path.exists(video_file_path):
-            os.remove(video_file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
-device = "cuda" if is_nvidia_gpu_available() else "cpu"
-if is_nvidia_gpu_available():
-    print("Using NVIDIA GPU for transcription.")
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+    device = "cuda"
 else:
-    print("Using CPU for transcription.")
+    torch.set_num_threads(2)
+    device = "cpu"
 
 model = whisper.load_model("base", device=device)
+
+print(f"Using device: {device}")
 
 client = AsyncOpenAI()
 
@@ -297,7 +323,7 @@ class WhisperTranscriber:
                     break
                     
                 mel = whisper.log_mel_spectrogram(audio_chunk).to(self.device)
-                result = self.model.transcribe(audio_chunk, verbose=False)
+                result = self.model.transcribe(audio_chunk)
                 transcription_segments.append(result["text"])
                 
                 self.current_window = i + 1
@@ -309,6 +335,7 @@ class WhisperTranscriber:
             total_time = time.time() - self.start_time
             print(f"\nTranscription completed in {format_time(total_time)}")
             print(f"Average processing speed: {audio_duration/total_time:.2f}x real-time")
+            await manager.send_message(f"\nTranscription completed in {format_time(total_time)}", overwrite=True)
             
             return {
                 "text": " ".join(transcription_segments),
@@ -380,15 +407,11 @@ async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
                 overwrite=True
             )
             
-            # Send a special message to indicate completion
-            await manager.send_message("__COMPLETE__", overwrite=False)
-            
             print(f"AI response saved as {ai_filename}")
             
     except Exception as e:
         print(f"Error during transcription: {e}")
         await manager.send_message("An error occurred during processing", overwrite=True)
-        await manager.send_message("__ERROR__", overwrite=False)
         await delete_folder_contents(INPUT_FOLDER)
         await delete_folder_contents(OUTPUT_FOLDER)
         await delete_folder_contents(TRANSCRIPTION_FOLDER)
@@ -425,10 +448,10 @@ async def use_openai_async(transcription_text: str, custom_prompt: str) -> str:
     
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...), prompt: str = Form(...)):
-    video_file_path = os.path.join(INPUT_FOLDER, file.filename)
+    file_path = os.path.join(INPUT_FOLDER, file.filename)
 
     if not allowed_file(file.filename):
-        return {"error": "Invalid file format. Please upload a valid video file."}
+        return {"error": "Invalid file format. Please upload a valid video or audio file."}
 
     transcription_filename = f"{os.path.splitext(file.filename)[0]}.txt"
     ai_response_filename = f"{os.path.splitext(file.filename)[0]}_ai_response.txt"
@@ -442,14 +465,14 @@ async def upload_file(file: UploadFile = File(...), prompt: str = Form(...)):
         return {"error": "Transcription already exists. Please download it."}
 
     try:
-        with open(video_file_path, 'wb') as f:
+        with open(file_path, 'wb') as f:
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
                 f.write(chunk)
 
-        await convert_video_to_audio(video_file_path, prompt)
+        await convert_video_to_audio(file_path, prompt)
         return {"filename": file.filename, "status": "Processed"}
 
     except Exception as e:

@@ -148,7 +148,12 @@ async function listTranscriptions() {
 
             const transcriptionContainer = document.getElementById("transcriptions");
             transcriptionContainer.innerHTML = '';
-            transcriptions.forEach(filename => {
+            
+            const sortedTranscriptions = transcriptions.sort((a, b) => {
+                return b.localeCompare(a);
+            });
+
+            sortedTranscriptions.forEach(filename => {
                 const item = document.createElement('div');
                 item.className = 'transcription-item';
                 item.innerHTML = `
@@ -174,7 +179,12 @@ async function listAIResponses() {
 
             const aiContainer = document.getElementById("ai-responses");
             aiContainer.innerHTML = '';
-            ai_responses.forEach(filename => {
+            
+            const sortedResponses = ai_responses.sort((a, b) => {
+                return b.localeCompare(a);
+            });
+
+            sortedResponses.forEach(filename => {
                 const item = document.createElement('div');
                 item.className = 'ai-response-item';
                 item.innerHTML = `
@@ -250,14 +260,14 @@ let isProcessing = false;
 socket.onmessage = function(event) {
     const message = event.data;
     
-    if (message === "__COMPLETE__") {
+    if (message === "Processing complete! You can now download your files.") {
         isProcessing = false;
         document.getElementById("status").style.display = "none";
         document.getElementById("upload-button").disabled = false;
         return;
     }
     
-    if (message === "__ERROR__") {
+    if (message === "An error occurred during processing") {
         isProcessing = false;
         document.getElementById("status").style.display = "none";
         document.getElementById("upload-button").disabled = false;

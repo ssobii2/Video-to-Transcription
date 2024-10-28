@@ -59,6 +59,9 @@ document.getElementById("upload-button").onclick = async function() {
         };
 
         xhr.onload = async function() {
+            if (xhr.status !== 200) {
+                isProcessing = false;
+            }
             document.getElementById("status").style.display = "none";
             document.getElementById("file-input").value = "";
             document.getElementById("file-label").textContent = "Choose File";
@@ -84,6 +87,7 @@ document.getElementById("upload-button").onclick = async function() {
         };
 
         xhr.onerror = function() {
+            isProcessing = false;
             displayError("Error uploading file.");
             document.getElementById("status").style.display = "none";
             document.getElementById("upload-button").disabled = false;
@@ -97,6 +101,7 @@ document.getElementById("upload-button").onclick = async function() {
         xhr.send(formData);
 
     } catch (error) {
+        isProcessing = false;
         displayError("Error uploading file.");
         document.getElementById("status").style.display = "none";
         document.getElementById("upload-button").disabled = false;
@@ -240,9 +245,25 @@ async function deleteAIResponse(filename) {
 }
 
 const socket = new WebSocket(`ws://${window.location.host}/ws`);
+let isProcessing = false;
 
 socket.onmessage = function(event) {
     const message = event.data;
+    
+    if (message === "__COMPLETE__") {
+        isProcessing = false;
+        document.getElementById("status").style.display = "none";
+        document.getElementById("upload-button").disabled = false;
+        return;
+    }
+    
+    if (message === "__ERROR__") {
+        isProcessing = false;
+        document.getElementById("status").style.display = "none";
+        document.getElementById("upload-button").disabled = false;
+        return;
+    }
+    
     updateMessage(message);
 };
 
@@ -251,12 +272,22 @@ socket.onopen = function() {
 };
 
 socket.onclose = function(event) {
-    console.log("WebSocket connection closed.");
+    console.log("WebSocket connection closed unexpectedly. Attempting to reconnect...");
+    if (isProcessing) {
+        // Only attempt to reconnect if we're in the middle of processing
+        setTimeout(function() {
+            socket = new WebSocket(`ws://${window.location.host}/ws`);
+        }, 1000);
+    }
 };
 
 socket.onerror = function(error) {
     console.error("WebSocket error:", error);
-    socket.close();
+    if (isProcessing) {
+        displayError("Lost connection to server. Please try again.");
+        document.getElementById("status").style.display = "none";
+        document.getElementById("upload-button").disabled = false;
+    }
 };
 
 function updateMessage(message) {

@@ -126,27 +126,6 @@ async def convert_video_to_audio(video_file_path: str, prompt: str):
         await delete_folder_contents(INPUT_FOLDER)
         return
 
-    # Verify file integrity first
-    try:
-        probe_command = [
-            'ffprobe', '-v', 'error',
-            '-select_streams', 'v:0',
-            '-show_entries', 'stream=codec_name,width,height,duration',
-            '-of', 'json',
-            video_file_path
-        ]
-        probe_result = subprocess.run(probe_command, capture_output=True, text=True)
-        if probe_result.returncode != 0:
-            print(f"Error probing video file: {probe_result.stderr}")
-            await manager.send_message("Error: Invalid or corrupted video file", overwrite=True)
-            await delete_folder_contents(INPUT_FOLDER)
-            return
-    except Exception as e:
-        print(f"Error checking video file: {e}")
-        await manager.send_message("Error: Could not verify video file", overwrite=True)
-        await delete_folder_contents(INPUT_FOLDER)
-        return
-
     audio_filename = f"{os.path.splitext(os.path.basename(video_file_path))[0]}.mp3"
     audio_file_path = os.path.join(OUTPUT_FOLDER, audio_filename)
 
@@ -177,7 +156,7 @@ async def convert_video_to_audio(video_file_path: str, prompt: str):
         start_time = time.time()
         last_progress_time = time.time()
         last_progress = 0
-        stall_start = None
+        no_progress_count = 0
         
         process = subprocess.Popen(
             command,
@@ -192,18 +171,8 @@ async def convert_video_to_audio(video_file_path: str, prompt: str):
                 break
 
             line = process.stdout.readline()
-            
-            current_time = time.time()
-            if current_time - last_progress_time > 10:
-                if stall_start is None:
-                    stall_start = current_time
-                elif current_time - stall_start > 30:
-                    print("Conversion stalled, terminating...")
-                    process.terminate()
-                    await manager.send_message("Error: Conversion stalled", overwrite=True)
-                    await delete_folder_contents(INPUT_FOLDER)
-                    await delete_folder_contents(OUTPUT_FOLDER)
-                    return
+            if not line:
+                continue
             
             if 'out_time_ms=' in line:
                 try:
@@ -211,39 +180,56 @@ async def convert_video_to_audio(video_file_path: str, prompt: str):
                     if current_time > last_progress:
                         last_progress = current_time
                         last_progress_time = time.time()
-                        stall_start = None
+                        no_progress_count = 0
                         
-                        progress = min(99.9, (current_time / total_duration) * 100)
-                        remaining = ((total_duration - current_time) / 
-                                   (current_time / (time.time() - start_time)))
-                        
-                        await manager.send_message(
-                            f"Video to Audio: {format_time(max(0, remaining))} remaining ({progress:.1f}%)",
-                            overwrite=True
-                        )
+                        elapsed_time = time.time() - start_time
+                        if elapsed_time > 0:
+                            speed = current_time / elapsed_time
+                            remaining_time = (total_duration - current_time) / speed
+                            
+                            if remaining_time > 1:
+                                await manager.send_message(
+                                    f"Video to Audio: {format_time(max(0, remaining_time))} remaining",
+                                    overwrite=True
+                                )
+                            else:
+                                break
+                    else:
+                        no_progress_count += 1
+                        if no_progress_count > 10:
+                            break
+                            
                 except (ValueError, ZeroDivisionError) as e:
                     print(f"Error parsing progress: {e}")
                     continue
 
-        if process.returncode == 0 and os.path.exists(audio_file_path):
-            await manager.send_message("Video to Audio: Conversion complete! (100%)", overwrite=True)
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            print("Had to terminate FFmpeg process")
+
+        if os.path.exists(audio_file_path) and os.path.getsize(audio_file_path) > 0:
             print(f"Conversion completed in {format_time(time.time() - start_time)}")
+            await manager.send_message(
+                "Video to Audio: Conversion complete!",
+                overwrite=True
+            )
             await asyncio.sleep(1)
             await transcribe_audio_with_whisper(audio_file_path, prompt)
         else:
-            error_output = process.stderr.read()
-            print(f"FFmpeg error: {error_output}")
-            await manager.send_message("Error: Conversion failed", overwrite=True)
-            await delete_folder_contents(INPUT_FOLDER)
-            await delete_folder_contents(OUTPUT_FOLDER)
+            raise Exception("Audio file not created or empty")
 
     except Exception as e:
-        print(f"Error during conversion: {e}")
-        await manager.send_message("Error: Conversion failed", overwrite=True)
+        error_msg = f"Error during conversion: {str(e)}"
+        print(error_msg)
+        await manager.send_message(f"Error: {error_msg}", overwrite=True)
         await delete_folder_contents(INPUT_FOLDER)
         await delete_folder_contents(OUTPUT_FOLDER)
 
     finally:
+        if process.poll() is None:
+            process.terminate()
         if os.path.exists(video_file_path):
             os.remove(video_file_path)
 

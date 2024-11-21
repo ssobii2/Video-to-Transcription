@@ -23,7 +23,8 @@ networkx==3.4.1
 numba==0.60.0
 numpy==2.0.2
 openai==1.51.2
-openai-whisper==20240930
+#openai-whisper==20240930
+faster-whisper==0.10.1
 pillow==10.4.0
 pydantic==2.9.2
 pydantic_core==2.23.4

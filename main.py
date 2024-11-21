@@ -1,6 +1,6 @@
 import os
 import subprocess
-import whisper
+from faster_whisper import WhisperModel
 import torch
 import time
 import uvicorn
@@ -256,6 +256,10 @@ async def convert_video_to_audio(file_path: str, prompt: str):
         if os.path.exists(file_path):
             os.remove(file_path)
 
+# Initialize OpenAI client
+client = AsyncOpenAI()
+
+# Configure device
 if torch.cuda.is_available():
     torch.cuda.empty_cache()
     device = "cuda"
@@ -263,130 +267,180 @@ else:
     torch.set_num_threads(2)
     device = "cpu"
 
-model = whisper.load_model("base", device=device)
-
-print(f"Using device: {device}")
-
-client = AsyncOpenAI()
+# Initialize the model once
+print(f"Initializing Whisper model on {device}...")
+compute_type = "float16" if device == "cuda" else "int8"
+whisper_model = WhisperModel("large-v3", device=device, compute_type=compute_type)
+print("Model initialization complete!")
 
 class WhisperTranscriber:
-    def __init__(self, model_name: str = "base", device: Optional[str] = None):
+    def __init__(self, model_name: str = "large-v3", device: Optional[str] = None):
         """Initialize the WhisperTranscriber with specified model and device."""
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
             
-        self.model = whisper.load_model(model_name, device=self.device)
-        self.window_size = 30
-        self.current_window = 0
-        self.total_windows = 0
-        self.start_time = 0
+        # Use the global model instead of creating a new one
+        self.model = whisper_model
         self.is_transcribing = False
+        self.progress_queue = asyncio.Queue()
 
-    def _calculate_remaining_time(self) -> float:
-        """Calculate remaining time based on actual processing speed of windows."""
-        if not self.is_transcribing or self.current_window == 0:
-            return 0
-            
-        elapsed_time = time.time() - self.start_time
-        if elapsed_time == 0:
-            return 0
-            
-        windows_per_second = self.current_window / elapsed_time
-        remaining_windows = self.total_windows - self.current_window
-        
-        return remaining_windows / windows_per_second if windows_per_second > 0 else 0
-
-    async def transcribe(self, audio_path: str, progress_callback) -> Dict:
+    async def transcribe(self, audio_path: str):
         """
         Transcribe audio file with accurate progress tracking.
         Returns dictionary with transcription text or error message.
         """
         try:
-            self.start_time = time.time()
             self.is_transcribing = True
-            self.current_window = 0
+            self.start_time = time.time()
+            transcription_done = False
             
-            audio = whisper.load_audio(audio_path)
-            audio_duration = len(audio) / whisper.audio.SAMPLE_RATE
-            self.total_windows = int(audio_duration / self.window_size) + 1
+            # Get audio duration for progress calculation
+            audio_duration = get_video_duration(audio_path)
             
-            transcription_segments = []
-            
-            for i in range(self.total_windows):
-                start_sample = i * self.window_size * whisper.audio.SAMPLE_RATE
-                end_sample = min((i + 1) * self.window_size * whisper.audio.SAMPLE_RATE, len(audio))
-                audio_chunk = audio[start_sample:end_sample]
-                
-                if len(audio_chunk) < whisper.audio.SAMPLE_RATE:
-                    break
+            # Initialize progress
+            await manager.send_message("Whisper Transcription: Starting...", overwrite=True)
+
+            # Create a progress update task
+            async def update_progress():
+                last_update = time.time()
+                last_segment_time = 0
+                while self.is_transcribing and not transcription_done:
+                    try:
+                        # Get latest progress update
+                        try:
+                            segment_end = await asyncio.wait_for(self.progress_queue.get(), timeout=0.1)
+                            last_segment_time = segment_end
+                        except asyncio.TimeoutError:
+                            pass
+                        
+                        current_time = time.time()
+                        if current_time - last_update >= 0.3:
+                            # Calculate progress based on audio position
+                            progress = min(0.95, last_segment_time / audio_duration)
+                            
+                            # Calculate remaining time based on processing speed
+                            elapsed_time = current_time - self.start_time
+                            if progress > 0:
+                                total_expected = (elapsed_time / progress)
+                                remaining_seconds = max(0, total_expected - elapsed_time)
+                                minutes = int(remaining_seconds // 60)
+                                seconds = int(remaining_seconds % 60)
+                                formatted_time = f"{minutes}m {seconds}s"
+                                
+                                try:
+                                    await manager.send_message(f"Whisper Transcription: {formatted_time} remaining", overwrite=True)
+                                except Exception as e:
+                                    print(f"Failed to send progress message: {e}")
+                            
+                            last_update = current_time
+                        
+                        if transcription_done:
+                            break
+                            
+                        await asyncio.sleep(0.1)
+                    except Exception as e:
+                        print(f"Progress update error: {e}")
+                        await asyncio.sleep(0.1)
+                        continue
+
+            # Start progress update task
+            progress_task = asyncio.create_task(update_progress())
+
+            try:
+                # Run transcription in thread pool
+                loop = asyncio.get_event_loop()
+                def run_transcription():
+                    segments_with_info = self.model.transcribe(
+                        audio_path,
+                        beam_size=5,
+                        word_timestamps=True,
+                        condition_on_previous_text=True
+                    )
                     
-                mel = whisper.log_mel_spectrogram(audio_chunk).to(self.device)
-                result = self.model.transcribe(audio_chunk)
-                transcription_segments.append(result["text"])
-                
-                self.current_window = i + 1
-                
-                remaining_time = self._calculate_remaining_time()
-                if progress_callback:
-                    await progress_callback(remaining_time)
+                    # Process segments and track progress
+                    all_segments = []
+                    for segment in segments_with_info[0]:  # segments_with_info[0] contains the segments
+                        all_segments.append(segment)
+                        # Update progress based on segment end time
+                        loop.call_soon_threadsafe(
+                            self.progress_queue.put_nowait,
+                            segment.end
+                        )
+                    
+                    return all_segments, segments_with_info[1]  # Return segments and info
+
+                segments, info = await loop.run_in_executor(None, run_transcription)
+            finally:
+                transcription_done = True
+                self.is_transcribing = False
             
+            # Process segments to get text
+            transcription_text = []
+            for segment in segments:
+                transcription_text.append(segment.text)
+            
+            # Wait for progress task to complete
+            try:
+                await asyncio.wait_for(progress_task, timeout=1.0)
+            except asyncio.TimeoutError:
+                pass
+            
+            # Calculate total time and show completion message
             total_time = time.time() - self.start_time
-            print(f"\nTranscription completed in {format_time(total_time)}")
-            print(f"Average processing speed: {audio_duration/total_time:.2f}x real-time")
-            await manager.send_message(f"\nTranscription completed in {format_time(total_time)}", overwrite=True)
+            completion_message = f"\nTranscription completed in {format_time(total_time)}"
+            print(completion_message)
+            await manager.send_message(completion_message, overwrite=True)
+            
+            final_text = " ".join(transcription_text)
+            if not final_text.strip():
+                return {"error": "Transcription produced no text"}
             
             return {
-                "text": " ".join(transcription_segments),
-                "segments": transcription_segments,
-                "processing_time": total_time,
-                "audio_duration": audio_duration,
-                "processing_speed": audio_duration/total_time
+                "text": final_text,
+                "processing_time": total_time
             }
             
         except Exception as e:
-            return {"error": str(e)}
-        finally:
             self.is_transcribing = False
+            error_message = f"Error during transcription: {str(e)}"
+            await manager.send_message(f"Error: {error_message}", overwrite=True)
+            return {"error": error_message}
 
 async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
     print("Starting transcription with Whisper...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
-
-    transcriber = WhisperTranscriber(model_name="base", device=device)
     
-    async def progress_callback(remaining_time: float):
-        formatted_time = format_time(max(remaining_time, 0))
-        await manager.send_message(
-            f"Whisper Transcription: {formatted_time} remaining",
-            overwrite=True
-        )
+    # Create transcriber without loading a new model
+    transcriber = WhisperTranscriber(device=device)
     
     try:
-        result = await transcriber.transcribe(audio_file_path, progress_callback)
+        result = await transcriber.transcribe(audio_file_path)
         
         if "error" in result:
             print(f"Transcription error: {result['error']}")
-            await manager.send_message("Transcription failed", overwrite=True)
-            return
+            await manager.send_message(f"Transcription failed: {result['error']}", overwrite=True)
+            return None
             
-        transcription_text = result["text"]
-        if not transcription_text:
+        transcription_text = result.get("text", "")
+        if not transcription_text.strip():
             print("Transcription failed or returned no text.")
-            await manager.send_message("Transcription failed - no text generated", overwrite=True)
-            return
+            await manager.send_message("Transcription failed: No text was produced", overwrite=True)
+            return None
             
-        transcription_filename = f"{os.path.splitext(os.path.basename(audio_file_path))[0]}.txt"
-        transcription_file_path = os.path.join(TRANSCRIPTION_FOLDER, transcription_filename)
+        print("Transcription completed successfully")
         
-        with open(transcription_file_path, 'w', encoding='utf-8') as f:
+        # Save transcription to file
+        filename = os.path.basename(audio_file_path)
+        base_name = os.path.splitext(filename)[0]
+        transcription_file = os.path.join(TRANSCRIPTION_FOLDER, f"{base_name}_transcription.txt")
+        
+        with open(transcription_file, "w", encoding="utf-8") as f:
             f.write(transcription_text)
             
-        print(f"Transcription saved as {transcription_filename}")
-        
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)  # Reduced sleep time
         
         await manager.send_message(
             "Generating AI response...",
@@ -408,17 +462,21 @@ async def transcribe_audio_with_whisper(audio_file_path: str, prompt: str):
             )
             
             print(f"AI response saved as {ai_filename}")
-            
+        
     except Exception as e:
-        print(f"Error during transcription: {e}")
-        await manager.send_message("An error occurred during processing", overwrite=True)
+        error_msg = f"Error during transcription: {str(e)}"
+        print(error_msg)
+        await manager.send_message(f"Error: {error_msg}", overwrite=True)
         await delete_folder_contents(INPUT_FOLDER)
         await delete_folder_contents(OUTPUT_FOLDER)
         await delete_folder_contents(TRANSCRIPTION_FOLDER)
         await delete_folder_contents(AI_RESPONSES_FOLDER)
-        
-    if os.path.exists(audio_file_path):
-        os.remove(audio_file_path)
+    finally:
+        if os.path.exists(audio_file_path):
+            try:
+                os.remove(audio_file_path)
+            except Exception as e:
+                print(f"Failed to remove audio file: {e}")
 
 async def use_openai_async(transcription_text: str, custom_prompt: str) -> str:
     """Use OpenAI's GPT in an asynchronous manner to process the transcription."""

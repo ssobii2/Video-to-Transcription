@@ -270,11 +270,11 @@ else:
 # Initialize the model once
 print(f"Initializing Whisper model on {device}...")
 compute_type = "float16" if device == "cuda" else "int8"
-whisper_model = WhisperModel("large-v3", device=device, compute_type=compute_type)
+whisper_model = WhisperModel("large-v2", device=device, compute_type=compute_type)
 print("Model initialization complete!")
 
 class WhisperTranscriber:
-    def __init__(self, model_name: str = "large-v3", device: Optional[str] = None):
+    def __init__(self, model_name: str = "large-v2", device: Optional[str] = None):
         """Initialize the WhisperTranscriber with specified model and device."""
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -285,6 +285,7 @@ class WhisperTranscriber:
         self.model = whisper_model
         self.is_transcribing = False
         self.progress_queue = asyncio.Queue()
+        self.processing_speed_history = []  # Store processing speeds for moving average
 
     async def transcribe(self, audio_path: str):
         """
@@ -295,6 +296,7 @@ class WhisperTranscriber:
             self.is_transcribing = True
             self.start_time = time.time()
             transcription_done = False
+            self.processing_speed_history = []
             
             # Get audio duration for progress calculation
             audio_duration = get_video_duration(audio_path)
@@ -306,34 +308,56 @@ class WhisperTranscriber:
             async def update_progress():
                 last_update = time.time()
                 last_segment_time = 0
+                last_progress = 0
+                
                 while self.is_transcribing and not transcription_done:
                     try:
                         # Get latest progress update
                         try:
                             segment_end = await asyncio.wait_for(self.progress_queue.get(), timeout=0.1)
-                            last_segment_time = segment_end
+                            if segment_end > last_segment_time:  # Only update if time increases
+                                last_segment_time = segment_end
                         except asyncio.TimeoutError:
                             pass
                         
                         current_time = time.time()
                         if current_time - last_update >= 0.3:
                             # Calculate progress based on audio position
-                            progress = min(0.95, last_segment_time / audio_duration)
+                            current_progress = min(0.95, last_segment_time / audio_duration)
                             
-                            # Calculate remaining time based on processing speed
-                            elapsed_time = current_time - self.start_time
-                            if progress > 0:
-                                total_expected = (elapsed_time / progress)
-                                remaining_seconds = max(0, total_expected - elapsed_time)
-                                minutes = int(remaining_seconds // 60)
-                                seconds = int(remaining_seconds % 60)
-                                formatted_time = f"{minutes}m {seconds}s"
+                            # Only update if progress increases
+                            if current_progress >= last_progress:
+                                elapsed_time = current_time - self.start_time
                                 
-                                try:
-                                    await manager.send_message(f"Whisper Transcription: {formatted_time} remaining", overwrite=True)
-                                except Exception as e:
-                                    print(f"Failed to send progress message: {e}")
-                            
+                                # Calculate processing speed (seconds of audio per second of real time)
+                                if last_segment_time > 0:
+                                    current_speed = last_segment_time / elapsed_time
+                                    
+                                    # Update moving average of processing speed
+                                    self.processing_speed_history.append(current_speed)
+                                    if len(self.processing_speed_history) > 5:  # Keep last 5 measurements
+                                        self.processing_speed_history.pop(0)
+                                    
+                                    # Calculate average speed
+                                    avg_speed = sum(self.processing_speed_history) / len(self.processing_speed_history)
+                                    
+                                    # Calculate remaining time using average speed
+                                    remaining_audio = audio_duration - last_segment_time
+                                    remaining_seconds = remaining_audio / avg_speed if avg_speed > 0 else 0
+                                    
+                                    # Add a small buffer for processing overhead
+                                    remaining_seconds *= 1.1
+                                    
+                                    minutes = int(remaining_seconds // 60)
+                                    seconds = int(remaining_seconds % 60)
+                                    formatted_time = f"{minutes}m {seconds}s"
+                                    
+                                    try:
+                                        await manager.send_message(f"Whisper Transcription: {formatted_time} remaining", overwrite=True)
+                                    except Exception as e:
+                                        print(f"Failed to send progress message: {e}")
+                                
+                                last_progress = current_progress
                             last_update = current_time
                         
                         if transcription_done:

@@ -5,14 +5,13 @@ import torch
 import time
 import uvicorn
 import asyncio
-import threading
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Optional, Callable
+from typing import Optional
 
 load_dotenv()
 
@@ -270,11 +269,14 @@ else:
 # Initialize the model once
 print(f"Initializing Whisper model on {device}...")
 compute_type = "float16" if device == "cuda" else "int8"
-whisper_model = WhisperModel("large-v2", device=device, compute_type=compute_type)
+whisper_model = WhisperModel("large-v3", 
+                           device=device, 
+                           compute_type=compute_type,
+                           num_workers=2)
 print("Model initialization complete!")
 
 class WhisperTranscriber:
-    def __init__(self, model_name: str = "large-v2", device: Optional[str] = None):
+    def __init__(self, model_name: str = "large-v3", device: Optional[str] = None):
         """Initialize the WhisperTranscriber with specified model and device."""
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -380,7 +382,7 @@ class WhisperTranscriber:
                         audio_path,
                         beam_size=5,
                         word_timestamps=True,
-                        condition_on_previous_text=True
+                        condition_on_previous_text=False
                     )
                     
                     # Process segments and track progress

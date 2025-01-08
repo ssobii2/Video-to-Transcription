@@ -5,3 +5,4 @@ __pycache__
 .env
 .aider*
 *.m4a
+venv

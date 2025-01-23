@@ -254,7 +254,8 @@ async function deleteAIResponse(filename) {
     }
 }
 
-const socket = new WebSocket(`ws://${window.location.host}/ws`);
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
 let isProcessing = false;
 
 socket.onmessage = function(event) {
@@ -286,7 +287,8 @@ socket.onclose = function(event) {
     if (isProcessing) {
         // Only attempt to reconnect if we're in the middle of processing
         setTimeout(function() {
-            socket = new WebSocket(`ws://${window.location.host}/ws`);
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
         }, 1000);
     }
 };

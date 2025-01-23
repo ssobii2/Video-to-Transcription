@@ -266,14 +266,19 @@ else:
     torch.set_num_threads(2)
     device = "cpu"
 
+def is_running_on_server():
+    """Check if the application is running on the server using environment variable"""
+    return os.environ.get('RUNNING_ON_SERVER') == 'true'
+
 # Initialize the model once
 print(f"Initializing Whisper model on {device}...")
 compute_type = "float16" if device == "cuda" else "int8"
-whisper_model = WhisperModel("large-v3", 
+model_size = "base" if is_running_on_server() else "large-v3"
+whisper_model = WhisperModel(model_size, 
                            device=device, 
                            compute_type=compute_type,
                            num_workers=2)
-print("Model initialization complete!")
+print(f"Model initialization complete! Using {model_size} model")
 
 class WhisperTranscriber:
     def __init__(self, model_name: str = "large-v3", device: Optional[str] = None):
@@ -622,4 +627,7 @@ async def delete_ai_response(filename):
     raise HTTPException(status_code=404, detail="AI Response not found.")
 
 if __name__ == "__main__":
+    print("Running in local mode with large-v3 model")
     uvicorn.run(app, host="127.0.0.1", port=8000)
+else:
+    print("Running in server mode with base model")

@@ -14,6 +14,9 @@ body {
   background: rgba(255, 255, 255, 0.9);
   border-radius: 15px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .header h1 {
@@ -69,6 +72,7 @@ body {
   border-radius: 15px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
   margin-bottom: 30px;
+  margin-top: 30px;
   max-width: 800px;
   margin-left: auto;
   margin-right: auto;
@@ -101,11 +105,10 @@ body {
 .tab-button.active {
   color: #007bff;
   border-bottom-color: #007bff;
-  background: rgba(0, 123, 255, 0.1);
 }
 
 .tab-button:hover {
-  background: rgba(0, 123, 255, 0.05);
+  border-bottom-color: #007bff;
   color: #007bff;
 }
 
@@ -343,9 +346,11 @@ input[type="file"] {
   border: 2px solid #ddd;
   border-radius: 8px;
   font-size: 16px;
-  font-family: "Roboto", sans-serif;
-  transition: border-color 0.3s;
+  font-family: inherit;
+  line-height: 1.4;
   resize: vertical;
+  min-height: 100px;
+  box-sizing: border-box;
 }
 
 #prompt-input:focus {
@@ -367,20 +372,23 @@ input[type="file"] {
 
 #files-container {
   display: flex;
-  gap: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 30px;
+  max-width: 850px;
+  margin: 0 auto 30px auto;
 }
 
 #transcription-links,
 #ai-response-links {
-  flex: 1;
-  min-width: 300px;
-  padding: 20px;
   background: rgba(255, 255, 255, 0.95);
+  padding: 25px;
   border-radius: 15px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  margin-left: auto;
+  margin-right: auto;
+  width: 850px;
+  max-width: 850px;
+  box-sizing: border-box;
 }
 
 #transcription-links h2,
@@ -388,6 +396,7 @@ input[type="file"] {
   text-align: center;
   color: #333;
   margin-top: 0;
+  margin-bottom: 20px;
   padding-bottom: 10px;
   border-bottom: 2px solid #17a2b8;
 }
@@ -420,8 +429,19 @@ input[type="file"] {
 .transcription-item span,
 .ai-response-item span {
   flex-grow: 1;
-  margin-right: 10px;
+  margin-right: 15px;
   font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 150px);
+}
+
+.transcription-item .file-actions,
+.ai-response-item .file-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 button {
@@ -437,7 +457,6 @@ button {
 }
 
 button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #0056b3, #003f7f);
   transform: translateY(-1px);
 }
 

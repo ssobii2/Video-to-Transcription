@@ -186,7 +186,8 @@ async function loadModels() {
 
 function updateModelSelect() {
   const modelSelect = document.getElementById("model-select");
-  modelSelect.innerHTML = '<option value="">Select a model...</option>';
+  modelSelect.innerHTML =
+    '<option value="" disabled>Select a model...</option>';
 
   availableModels.forEach((model) => {
     const option = document.createElement("option");
@@ -540,6 +541,15 @@ function setupDownloadWebSocket() {
           // Refresh models list to show the newly downloaded model
           loadModels();
           displayMessage(`✅ ${modelName} model is now ready for use!`);
+
+          // Auto-hide status after 3 seconds
+          setTimeout(() => {
+            const progressContainer =
+              document.getElementById("progress-container");
+            if (progressContainer) {
+              progressContainer.style.display = "none";
+            }
+          }, 3000);
         }, 2000);
       }
     }
@@ -607,6 +617,14 @@ async function deleteModel(modelName) {
       displayMessage(`${modelName} model deleted successfully!`);
       // Refresh models list
       await loadModels();
+
+      // Auto-hide status after 3 seconds
+      setTimeout(() => {
+        const progressContainer = document.getElementById("progress-container");
+        if (progressContainer) {
+          progressContainer.style.display = "none";
+        }
+      }, 3000);
     } else {
       const errorData = await response.json();
       displayError(errorData.detail || "Error deleting model");
@@ -697,9 +715,11 @@ async function listTranscriptions() {
         const item = document.createElement("div");
         item.className = "transcription-item";
         item.innerHTML = `
-                    <span>${filename}</span>
-                    <button onclick="downloadTranscription('${filename}')">Download</button>
-                    <button onclick="deleteTranscription('${filename}')">Delete</button>
+                    <span title="${filename}">${filename}</span>
+                    <div class="file-actions">
+                        <button onclick="downloadTranscription('${filename}')">Download</button>
+                        <button onclick="deleteTranscription('${filename}')">Delete</button>
+                    </div>
                 `;
         transcriptionContainer.appendChild(item);
       });
@@ -733,9 +753,11 @@ async function listAIResponses() {
         const item = document.createElement("div");
         item.className = "ai-response-item";
         item.innerHTML = `
-                    <span>${filename}</span>
-                    <button onclick="downloadAIResponse('${filename}')">Download</button>
-                    <button onclick="deleteAIResponse('${filename}')">Delete</button>
+                    <span title="${filename}">${filename}</span>
+                    <div class="file-actions">
+                        <button onclick="downloadAIResponse('${filename}')">Download</button>
+                        <button onclick="deleteAIResponse('${filename}')">Delete</button>
+                    </div>
                 `;
         aiContainer.appendChild(item);
       });

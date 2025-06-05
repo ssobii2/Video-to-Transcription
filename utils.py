@@ -187,4 +187,99 @@ def safe_filename(filename: str) -> str:
     # Remove or replace problematic characters
     safe_name = re.sub(r'[<>:"/\\|?*]', '_', filename)
     safe_name = re.sub(r'\s+', '_', safe_name)  # Replace spaces with underscores
-    return safe_name[:255]  # Limit to 255 characters 
+    return safe_name[:255]  # Limit to 255 characters
+
+def format_enhanced_transcription(segments, audio_filename: str, model_name: str) -> str:
+    """
+    Format transcription with enhanced sentence grouping and professional timestamps
+    Based on industry best practices for subtitle/caption formatting
+    """
+    
+    # Header information
+    output = f"Transcription of: {audio_filename}\n"
+    output += f"Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+    output += f"Model: {model_name}\n"
+    output += "-" * 50 + "\n\n"
+    
+    # Group segments into logical sentences/phrases
+    grouped_segments = []
+    current_group = []
+    current_start = None
+    current_text = ""
+    
+    for segment in segments:
+        segment_text = segment.text.strip()
+        
+        # If this is the start of a new group
+        if current_start is None:
+            current_start = segment.start
+            current_text = segment_text
+            current_group = [segment]
+            continue
+        
+        # Check if we should start a new group
+        should_break = False
+        
+        # Break if the pause between segments is longer than 3 seconds (longer pauses)
+        if segment.start - current_group[-1].end > 3.0:
+            should_break = True
+        
+        # Break if the current group would be too long (> 200 characters for longer sentences)
+        elif len(current_text + " " + segment_text) > 200:
+            should_break = True
+        
+        # Break if we have more than 8 segments in current group (allow longer sentences)
+        elif len(current_group) >= 8:
+            should_break = True
+        
+        # Only break on strong sentence endings if the group is already substantial
+        elif (len(current_text) > 100 and 
+              current_text.rstrip().endswith(('.', '!', '?')) and
+              len(current_group) >= 3):
+            should_break = True
+        
+        if should_break:
+            # Finalize current group
+            if current_group:
+                grouped_segments.append({
+                    'start': current_start,
+                    'end': current_group[-1].end,
+                    'text': current_text.strip()
+                })
+            
+            # Start new group
+            current_start = segment.start
+            current_text = segment_text
+            current_group = [segment]
+        else:
+            # Add to current group
+            current_text += " " + segment_text
+            current_group.append(segment)
+    
+    # Don't forget the last group
+    if current_group:
+        grouped_segments.append({
+            'start': current_start,
+            'end': current_group[-1].end,
+            'text': current_text.strip()
+        })
+    
+    # Format the grouped segments with timestamps
+    for group in grouped_segments:
+        start_timestamp = format_timestamp_simple(group['start'])
+        end_timestamp = format_timestamp_simple(group['end'])
+        
+        # Simple timestamp and text format (no line numbers)
+        output += f"{start_timestamp} --> {end_timestamp}\n"
+        output += f"{group['text'].strip()}\n\n"
+    
+    return output
+
+def format_timestamp_simple(seconds: float) -> str:
+    """Format seconds into simple timestamp format (MM:SS)"""
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    
+    return f"{minutes:02d}:{secs:02d}"
+
+ 

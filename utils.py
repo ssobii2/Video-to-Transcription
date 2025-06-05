@@ -23,13 +23,16 @@ def get_file_size_mb(file_path: str) -> float:
 
 def get_video_duration(video_file_path: str) -> float:
     """Get the duration of the video using ffprobe."""
+    from pathlib import Path
+    project_root = Path(__file__).parent.absolute()
+    
     ffprobe_command = [
         'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
         '-of', 'default=noprint_wrappers=1:nokey=1', video_file_path
     ]
 
     try:
-        output = subprocess.check_output(ffprobe_command).strip().decode('utf-8')
+        output = subprocess.check_output(ffprobe_command, cwd=str(project_root)).strip().decode('utf-8')
         if output == 'N/A' or not output:
             raise ValueError(f"Could not retrieve duration for file: {video_file_path}")
         duration = float(output)
@@ -158,6 +161,9 @@ class ProgressTracker:
 
 def validate_environment() -> dict:
     """Validate that required tools are available"""
+    from pathlib import Path
+    project_root = Path(__file__).parent.absolute()
+    
     requirements = {
         'ffmpeg': False,
         'ffprobe': False
@@ -166,7 +172,7 @@ def validate_environment() -> dict:
     # Check for ffmpeg
     try:
         subprocess.run(['ffmpeg', '-version'], 
-                      capture_output=True, check=True)
+                      capture_output=True, check=True, cwd=str(project_root))
         requirements['ffmpeg'] = True
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
@@ -174,7 +180,7 @@ def validate_environment() -> dict:
     # Check for ffprobe
     try:
         subprocess.run(['ffprobe', '-version'], 
-                      capture_output=True, check=True)
+                      capture_output=True, check=True, cwd=str(project_root))
         requirements['ffprobe'] = True
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass

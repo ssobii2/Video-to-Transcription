@@ -18,7 +18,6 @@ class ModelSize(Enum):
     MEDIUM = "medium"
     LARGE = "large-v2"
     LARGE_V3 = "large-v3"
-    TURBO = "turbo"
 
 @dataclass
 class HardwareInfo:
@@ -136,8 +135,7 @@ class Config:
             ModelSize.SMALL: "small",
             ModelSize.MEDIUM: "medium",
             ModelSize.LARGE: "large-v2",
-            ModelSize.LARGE_V3: "large-v3",
-            ModelSize.TURBO: "turbo"
+            ModelSize.LARGE_V3: "large-v3"
         }
         
         for model_size, model_name in model_mapping.items():
@@ -193,7 +191,7 @@ class Config:
             # Define preference order based on GPU memory
             if self.hardware.gpu_memory_gb >= 8:
                 # High-end GPU: prefer largest available models
-                preferred_order = [ModelSize.LARGE_V3, ModelSize.TURBO, ModelSize.LARGE, ModelSize.MEDIUM, ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
+                preferred_order = [ModelSize.LARGE_V3, ModelSize.LARGE, ModelSize.MEDIUM, ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
                 config_template = {
                     "device": "cuda",
                     "compute_type": "float16",
@@ -202,7 +200,7 @@ class Config:
                 }
             elif self.hardware.gpu_memory_gb >= 6:
                 # Mid-range GPU: prefer large models
-                preferred_order = [ModelSize.LARGE_V3, ModelSize.TURBO, ModelSize.MEDIUM, ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
+                preferred_order = [ModelSize.LARGE_V3, ModelSize.LARGE, ModelSize.MEDIUM, ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
                 config_template = {
                     "device": "cuda",
                     "compute_type": "float16", 

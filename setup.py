@@ -156,7 +156,6 @@ print(f"Environment: {config.environment.value}")
 print(f"Selected Model: {config.model_config.model_size.value}")
 print(f"Device: {config.model_config.device}")
 print(f"Downloaded Models: {downloaded_models}")
-print(f"Turbo available: {config.is_turbo_available()}")
 """], capture_output=True, text=True, check=True)
         
         print("✅ Configuration test passed:")

@@ -8,10 +8,10 @@ An intelligent video and audio transcription service with adaptive model selecti
 
 ### Adaptive Model Selection
 
-- **Local Environment (GPU)**: Automatically uses Large-v3 or Turbo models for maximum accuracy
+- **Local Environment (GPU)**: Automatically uses Large-v3 model for maximum accuracy
 - **Server Environment (CPU)**: Optimizes for Base or Tiny models based on available resources
 - **Hardware Detection**: Automatically detects GPU memory, CPU cores, and RAM to select optimal configuration
-- **Turbo Support**: Fast transcription with Turbo model when available
+- **Multiple Model Sizes**: Support for tiny, base, small, medium, large-v2, and large-v3 models
 
 ### Intelligent Processing
 
@@ -51,7 +51,7 @@ An intelligent video and audio transcription service with adaptive model selecti
 
 #### Local Development (GPU)
 
-- **GPU**: 4GB+ VRAM (6GB+ recommended for Turbo model)
+- **GPU**: 4GB+ VRAM (6GB+ recommended for large models)
 - **RAM**: 8GB+ system RAM
 - **CPU**: 4+ cores
 
@@ -254,7 +254,7 @@ deactivate
 
 - **Select File**: Choose video or audio file
 - **Choose Model**: Select from downloaded models or use auto-selection
-- **Turbo Option**: Enable for faster processing (when available)
+- **Model Selection**: Choose from available models based on your hardware
 - **AI Prompt**: Enter custom prompt for AI processing
 
 #### 3. **Monitor Progress**

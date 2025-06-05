@@ -481,6 +481,74 @@ button:hover:not(:disabled) {
   margin-right: 10px;
 }
 
+.spinner-small {
+  border: 2px solid rgba(0, 123, 255, 0.3);
+  border-left-color: #007bff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+}
+
+.spinner-inline {
+  border: 2px solid rgba(0, 123, 255, 0.3);
+  border-left-color: #007bff;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  animation: spin 0.8s linear infinite;
+  margin-right: 6px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.loading-content {
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: 90%;
+}
+
+.loading-spinner {
+  border: 4px solid rgba(0, 123, 255, 0.3);
+  border-left-color: #007bff;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+.loading-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.loading-subtext {
+  font-size: 14px;
+  color: #666;
+}
+
 @keyframes spin {
   0% {
     transform: rotate(0deg);
@@ -488,6 +556,27 @@ button:hover:not(:disabled) {
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* Button loading states */
+button.loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+
+button.loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-left-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 #upload-progress-container {
@@ -538,10 +627,27 @@ button:hover:not(:disabled) {
   min-height: 50px;
 }
 
+#progress-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+#progress-spinner {
+  flex-shrink: 0;
+}
+
 #message {
   text-align: center;
   font-weight: 500;
   color: #333;
+  flex-grow: 1;
+}
+
+/* When there's no message, center the spinner */
+#progress-content:has(#message:empty) {
+  justify-content: center;
 }
 
 @media (max-width: 768px) {

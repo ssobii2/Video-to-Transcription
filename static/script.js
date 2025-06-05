@@ -4,22 +4,122 @@ let availableModels = [];
 let installedModels = [];
 let isProcessing = false;
 
+// Loading state management
+const LoadingManager = {
+  show: function (text = "Loading...", subtext = "") {
+    this.hide(); // Remove any existing overlay
+
+    const overlay = document.createElement("div");
+    overlay.className = "loading-overlay";
+    overlay.id = "loading-overlay";
+
+    const content = document.createElement("div");
+    content.className = "loading-content";
+
+    const spinner = document.createElement("div");
+    spinner.className = "loading-spinner";
+
+    const textDiv = document.createElement("div");
+    textDiv.className = "loading-text";
+    textDiv.textContent = text;
+
+    content.appendChild(spinner);
+    content.appendChild(textDiv);
+
+    if (subtext) {
+      const subtextDiv = document.createElement("div");
+      subtextDiv.className = "loading-subtext";
+      subtextDiv.textContent = subtext;
+      content.appendChild(subtextDiv);
+    }
+
+    overlay.appendChild(content);
+    document.body.appendChild(overlay);
+  },
+
+  hide: function () {
+    const existing = document.getElementById("loading-overlay");
+    if (existing) {
+      existing.remove();
+    }
+  },
+
+  updateText: function (text, subtext = "") {
+    const textDiv = document.querySelector(".loading-text");
+    const subtextDiv = document.querySelector(".loading-subtext");
+
+    if (textDiv) textDiv.textContent = text;
+
+    if (subtextDiv && subtext) {
+      subtextDiv.textContent = subtext;
+    } else if (subtext && !subtextDiv) {
+      const newSubtextDiv = document.createElement("div");
+      newSubtextDiv.className = "loading-subtext";
+      newSubtextDiv.textContent = subtext;
+      document.querySelector(".loading-content").appendChild(newSubtextDiv);
+    }
+  },
+
+  showButtonLoading: function (buttonId, originalText) {
+    const button = document.getElementById(buttonId);
+    if (button) {
+      button.classList.add("loading");
+      button.disabled = true;
+      button.dataset.originalText = originalText || button.textContent;
+    }
+  },
+
+  hideButtonLoading: function (buttonId, restoreText = true) {
+    const button = document.getElementById(buttonId);
+    if (button) {
+      button.classList.remove("loading");
+      button.disabled = false;
+      if (restoreText && button.dataset.originalText) {
+        button.textContent = button.dataset.originalText;
+        delete button.dataset.originalText;
+      }
+    }
+  },
+};
+
 // Initialize the application
 document.addEventListener("DOMContentLoaded", function () {
   initializeApp();
 });
 
 async function initializeApp() {
-  await loadSystemInfo();
-  await loadModels();
-  await loadSuggestedPrompts();
-  setupEventListeners();
-  listTranscriptions();
-  listAIResponses();
+  LoadingManager.show(
+    "Initializing application...",
+    "Loading system information and models"
+  );
 
-  // Setup WebSocket for real-time updates
-  setupWebSocket();
-  setupDownloadWebSocket();
+  try {
+    await loadSystemInfo();
+    LoadingManager.updateText(
+      "Loading models...",
+      "Detecting available models"
+    );
+    await loadModels();
+    LoadingManager.updateText(
+      "Loading AI prompts...",
+      "Setting up AI features"
+    );
+    await loadSuggestedPrompts();
+    LoadingManager.updateText("Setting up interface...", "Almost ready");
+    setupEventListeners();
+    listTranscriptions();
+    listAIResponses();
+
+    // Setup WebSocket for real-time updates
+    setupWebSocket();
+    setupDownloadWebSocket();
+
+    LoadingManager.hide();
+  } catch (error) {
+    LoadingManager.hide();
+    displayError("Failed to initialize application: " + error.message);
+    console.error("Initialization error:", error);
+  }
 }
 
 function setupEventListeners() {
@@ -263,8 +363,19 @@ async function handleUpload() {
 
   clearError();
   clearProgress();
+
+  // Show button loading state
+  LoadingManager.showButtonLoading("upload-button", "Upload & Process");
   document.getElementById("status").style.display = "block";
-  document.getElementById("upload-button").disabled = true;
+
+  // Show progress section with spinner immediately
+  const progressContainer = document.getElementById("progress-container");
+  const progressSpinner = document.getElementById("progress-spinner");
+  const messageElement = document.getElementById("message");
+
+  progressContainer.style.display = "block";
+  progressSpinner.style.display = "block";
+  messageElement.innerText = "Uploading file...";
 
   uploadProgressBar.style.display = "block";
   uploadProgressMessage.style.display = "block";
@@ -295,11 +406,23 @@ async function handleUpload() {
             "none";
 
           document.getElementById("status").style.display = "block";
+
+          // Update progress section for processing with a slight delay
+          // This prevents immediate WebSocket messages from overriding the upload complete message
+          setTimeout(() => {
+            const messageElement = document.getElementById("message");
+            if (messageElement.innerText === "Uploading file...") {
+              messageElement.innerText =
+                "Upload complete, starting processing...";
+            }
+          }, 500);
         }
       }
     };
 
     xhr.onload = async function () {
+      LoadingManager.hideButtonLoading("upload-button");
+
       if (xhr.status !== 200) {
         isProcessing = false;
       }
@@ -311,7 +434,6 @@ async function handleUpload() {
         .getElementById("selected-file-name")
         .classList.remove("has-file");
       document.getElementById("prompt-input").value = "";
-      document.getElementById("upload-button").disabled = true;
 
       uploadProgressBar.style.display = "none";
       uploadProgressMessage.style.display = "none";
@@ -328,15 +450,30 @@ async function handleUpload() {
         }
       } else {
         const responseData = JSON.parse(xhr.responseText);
-        displayError(responseData.error || "Error uploading file.");
+
+        // Handle duplicate file errors specifically
+        if (
+          xhr.status === 400 &&
+          responseData.detail &&
+          (responseData.detail.includes("already exists") ||
+            responseData.detail.includes("Transcription already exists"))
+        ) {
+          displayError(
+            `⚠️ Duplicate File Detected\n\n${responseData.detail}\n\nPlease delete the existing transcription file from the "Transcription Files" section below, then try again.`
+          );
+        } else {
+          displayError(
+            responseData.detail || responseData.error || "Error uploading file."
+          );
+        }
       }
     };
 
     xhr.onerror = function () {
+      LoadingManager.hideButtonLoading("upload-button");
       isProcessing = false;
       displayError("Error uploading file.");
       document.getElementById("status").style.display = "none";
-      document.getElementById("upload-button").disabled = true;
 
       uploadProgressBar.style.display = "none";
       uploadProgressMessage.style.display = "none";
@@ -347,10 +484,10 @@ async function handleUpload() {
     uploadProgressBar.style.display = "block";
     xhr.send(formData);
   } catch (error) {
+    LoadingManager.hideButtonLoading("upload-button");
     isProcessing = false;
     displayError("Error uploading file.");
     document.getElementById("status").style.display = "none";
-    document.getElementById("upload-button").disabled = true;
 
     uploadProgressBar.style.display = "none";
     uploadProgressMessage.style.display = "none";
@@ -439,14 +576,19 @@ function createModelItem(model, isInstalled, showDownload = false) {
 
 async function downloadModel(modelName) {
   try {
+    // Show loading overlay
+    LoadingManager.show(
+      "Preparing download...",
+      `Setting up download for ${modelName} model`
+    );
+
     // Disable the download button to prevent multiple downloads
     const downloadButtons = document.querySelectorAll(
       `button[onclick="downloadModel('${modelName}')"]`
     );
     downloadButtons.forEach((btn) => {
+      btn.classList.add("loading");
       btn.disabled = true;
-      btn.textContent = "Downloading...";
-      btn.style.background = "#6c757d";
     });
 
     displayMessage(`📥 Starting download for ${modelName} model...`);
@@ -466,25 +608,42 @@ async function downloadModel(modelName) {
 
     if (response.ok) {
       const data = await response.json();
+      LoadingManager.updateText(
+        "Download started",
+        "Progress updates will appear below"
+      );
       displayMessage(`${data.message} - Watch for progress updates below.`);
 
       // Keep the button disabled and show downloading state
       downloadButtons.forEach((btn) => {
+        btn.classList.remove("loading");
         btn.textContent = "Downloading...";
         btn.style.background = "#17a2b8";
       });
+
+      // Hide loading overlay after a short delay since WebSocket will handle progress
+      setTimeout(() => LoadingManager.hide(), 2000);
     } else {
       const errorData = await response.json();
-      displayError(errorData.detail || "Error downloading model");
+      LoadingManager.hide();
+
+      // Handle turbo model error specifically
+      if (errorData.detail && errorData.detail.includes("turbo")) {
+        displayError(`❌ Model Not Supported\n\n${errorData.detail}`);
+      } else {
+        displayError(errorData.detail || "Error downloading model");
+      }
 
       // Re-enable download buttons on error
       downloadButtons.forEach((btn) => {
+        btn.classList.remove("loading");
         btn.disabled = false;
         btn.textContent = "Download";
         btn.style.background = "#28a745";
       });
     }
   } catch (error) {
+    LoadingManager.hide();
     console.error("Error downloading model:", error);
     displayError("Error downloading model");
 
@@ -493,6 +652,7 @@ async function downloadModel(modelName) {
       `button[onclick="downloadModel('${modelName}')"]`
     );
     downloadButtons.forEach((btn) => {
+      btn.classList.remove("loading");
       btn.disabled = false;
       btn.textContent = "Download";
       btn.style.background = "#28a745";
@@ -527,12 +687,16 @@ function setupDownloadWebSocket() {
       if (modelMatch) {
         const modelName = modelMatch[1];
 
+        // Hide any loading overlays
+        LoadingManager.hide();
+
         // Re-enable and update download buttons
         setTimeout(() => {
           const downloadButtons = document.querySelectorAll(
             `button[onclick="downloadModel('${modelName}')"]`
           );
           downloadButtons.forEach((btn) => {
+            btn.classList.remove("loading");
             btn.disabled = false;
             btn.textContent = "Download";
             btn.style.background = "#28a745";
@@ -559,6 +723,9 @@ function setupDownloadWebSocket() {
       message.includes("Failed to download") ||
       message.includes("was cancelled")
     ) {
+      // Hide any loading overlays
+      LoadingManager.hide();
+
       // Extract model name and re-enable buttons
       const modelMatch = message.match(/(\w+) model/);
       if (modelMatch) {
@@ -567,6 +734,7 @@ function setupDownloadWebSocket() {
           `button[onclick="downloadModel('${modelName}')"]`
         );
         downloadButtons.forEach((btn) => {
+          btn.classList.remove("loading");
           btn.disabled = false;
           btn.textContent = "Download";
           btn.style.background = "#28a745";
@@ -607,6 +775,10 @@ async function deleteModel(modelName) {
   }
 
   try {
+    LoadingManager.show(
+      "Deleting model...",
+      `Removing ${modelName} model from storage`
+    );
     displayMessage(`Deleting ${modelName} model...`);
 
     const response = await fetch(`/api/models/${modelName}`, {
@@ -614,9 +786,11 @@ async function deleteModel(modelName) {
     });
 
     if (response.ok) {
+      LoadingManager.updateText("Model deleted", "Refreshing model list");
       displayMessage(`${modelName} model deleted successfully!`);
       // Refresh models list
       await loadModels();
+      LoadingManager.hide();
 
       // Auto-hide status after 3 seconds
       setTimeout(() => {
@@ -626,10 +800,12 @@ async function deleteModel(modelName) {
         }
       }, 3000);
     } else {
+      LoadingManager.hide();
       const errorData = await response.json();
       displayError(errorData.detail || "Error deleting model");
     }
   } catch (error) {
+    LoadingManager.hide();
     console.error("Error deleting model:", error);
     displayError("Error deleting model");
   }
@@ -687,9 +863,16 @@ function displayMessage(message) {
 
 function clearProgress() {
   const messageElement = document.getElementById("message");
+  const progressContainer = document.getElementById("progress-container");
+  const progressSpinner = document.getElementById("progress-spinner");
+
   if (messageElement) {
     messageElement.innerText = "";
   }
+
+  // Hide progress container and spinner
+  progressContainer.style.display = "none";
+  progressSpinner.style.display = "none";
 }
 
 // File Management Functions
@@ -782,16 +965,22 @@ async function deleteTranscription(filename) {
   }
 
   try {
+    LoadingManager.show("Deleting file...", `Removing ${filename}`);
+
     const response = await fetch(`/transcription/${filename}`, {
       method: "DELETE",
     });
 
     if (response.ok) {
+      LoadingManager.hide();
       listTranscriptions();
+      displayMessage(`${filename} deleted successfully`);
     } else {
+      LoadingManager.hide();
       displayError("Error deleting transcription.");
     }
   } catch (error) {
+    LoadingManager.hide();
     displayError("Error deleting transcription.");
   }
 }
@@ -809,16 +998,22 @@ async function deleteAIResponse(filename) {
   }
 
   try {
+    LoadingManager.show("Deleting file...", `Removing ${filename}`);
+
     const response = await fetch(`/ai/${filename}`, {
       method: "DELETE",
     });
 
     if (response.ok) {
+      LoadingManager.hide();
       listAIResponses();
+      displayMessage(`${filename} deleted successfully`);
     } else {
+      LoadingManager.hide();
       displayError("Error deleting AI response.");
     }
   } catch (error) {
+    LoadingManager.hide();
     displayError("Error deleting AI response.");
   }
 }
@@ -846,21 +1041,72 @@ function setupWebSocket() {
 function updateMessage(message) {
   const messageElement = document.getElementById("message");
   const progressContainer = document.getElementById("progress-container");
+  const progressSpinner = document.getElementById("progress-spinner");
 
   if (messageElement) {
-    messageElement.innerText = message;
+    // Don't override upload completion message too quickly for audio files
+    const currentMessage = messageElement.innerText;
+    if (
+      currentMessage.includes("Upload complete, starting processing...") &&
+      message.includes("Preparing audio file...")
+    ) {
+      // Give the user a moment to see the upload completion
+      setTimeout(() => {
+        if (
+          messageElement.innerText.includes(
+            "Upload complete, starting processing..."
+          )
+        ) {
+          messageElement.innerText = message;
+        }
+      }, 1500);
+      return; // Don't continue with the rest of the function yet
+    } else {
+      messageElement.innerText = message;
+    }
   }
 
   // Show progress container when we have a message, keep it visible during processing
   if (message && message.trim()) {
     progressContainer.style.display = "block";
 
+    // Show spinner for processing messages, hide for completion/error messages
+    if (
+      message.includes("Processing ") ||
+      message.includes("Starting transcription...") ||
+      message.includes("Processing with AI...") ||
+      message.includes("Formatting transcription...") ||
+      message.includes("Saving transcription...") ||
+      message.includes("Converting") ||
+      message.includes("Extracting") ||
+      message.includes("Preparing audio file...") ||
+      message.includes("Audio file ready")
+    ) {
+      // Show spinner during active processing
+      progressSpinner.style.display = "block";
+    } else if (
+      message.includes("completed successfully") ||
+      message.includes("❌") ||
+      message.includes("⚠️") ||
+      message.includes("ℹ️") ||
+      message.includes("Processing failed") ||
+      message.includes("skipped")
+    ) {
+      // Hide spinner when processing ends (success, error, or skip)
+      progressSpinner.style.display = "none";
+    }
+
     // Only hide progress container when processing is completely done
-    if (message.includes("Processing completed successfully")) {
+    if (
+      message.includes("Processing completed successfully") ||
+      message.includes("❌") ||
+      message.includes("Processing failed")
+    ) {
       // Keep it visible for a few seconds so user can see completion message
       setTimeout(() => {
         progressContainer.style.display = "none";
-      }, 3000);
+        progressSpinner.style.display = "none";
+      }, 4000);
     }
   }
 

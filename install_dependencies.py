@@ -475,7 +475,6 @@ def get_available_models_for_hardware(cuda_version=None):
         return {
             "large-v3": {"name": "Large-v3", "size": "~3GB", "description": "Highest accuracy (recommended)", "recommended": True},
             "large-v2": {"name": "Large-v2", "size": "~3GB", "description": "High accuracy"},
-            "turbo": {"name": "Turbo", "size": "~1.5GB", "description": "Fast with good accuracy"},
             "medium": {"name": "Medium", "size": "~1.5GB", "description": "Balanced speed/accuracy"},
             "base": {"name": "Base", "size": "~140MB", "description": "Fast, good accuracy"},
             "small": {"name": "Small", "size": "~240MB", "description": "Very fast"},
@@ -754,7 +753,7 @@ CHUNK_DURATION=30
 # ENVIRONMENT=auto  # Options: auto, local, server
 
 # Model override (auto-selection is recommended)
-# FORCE_MODEL=large-v3  # Options: tiny, base, small, medium, large-v2, large-v3, turbo
+# FORCE_MODEL=large-v3  # Options: tiny, base, small, medium, large-v2, large-v3
 
 # Hardware override (auto-detection is recommended)
 # FORCE_DEVICE=auto  # Options: auto, cuda, cpu
@@ -776,7 +775,7 @@ CHUNK_DURATION=30
 # 3. Model Selection:
 #    - Local (GPU): Prioritizes accuracy with large-v3 model
 #    - Server (CPU): Optimizes for efficiency with base/tiny models
-#    - Turbo model available for manual selection when GPU has 6GB+ VRAM
+#    - Large models available for manual selection when GPU has 6GB+ VRAM
 #
 # 4. File Size Limits:
 #    - MAX_FILE_SIZE_MB: Maximum upload file size

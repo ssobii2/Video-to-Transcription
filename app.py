@@ -182,7 +182,7 @@ async def get_installed_models():
         ]
         
         installed = []
-        model_names = ["tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"]
+        model_names = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
         
         for cache_dir in cache_dirs:
             if cache_dir and cache_dir.exists():
@@ -202,6 +202,13 @@ async def get_installed_models():
 async def download_model(whisper_model: str = Form(...)):
     """Download a specific model"""
     try:
+        # Check for turbo model specifically
+        if whisper_model.lower() == "turbo":
+            raise HTTPException(
+                status_code=400,
+                detail="The 'turbo' model is not supported by faster-whisper. Available models: tiny, base, small, medium, large-v2, large-v3"
+            )
+        
         # Validate model name
         available_models = await transcription_service.get_available_models()
         available_model_sizes = [model["size"] for model in available_models]
@@ -384,7 +391,7 @@ async def get_compatible_models():
             compatible = [
                 {"name": "Large-v3", "size": "large-v3", "description": "Highest accuracy (recommended)", "recommended": True, "memory_req": "6GB+ VRAM"},
                 {"name": "Large-v2", "size": "large-v2", "description": "High accuracy", "memory_req": "6GB+ VRAM"},
-                {"name": "Turbo", "size": "turbo", "description": "Fast with good accuracy", "memory_req": "4GB+ VRAM"},
+
                 {"name": "Medium", "size": "medium", "description": "Balanced speed/accuracy", "memory_req": "2GB+ VRAM"},
                 {"name": "Base", "size": "base", "description": "Fast, good accuracy", "memory_req": "1GB+ VRAM"},
                 {"name": "Small", "size": "small", "description": "Very fast", "memory_req": "1GB+ VRAM"},
@@ -493,12 +500,20 @@ async def process_uploaded_file(file_path: str, prompt: str, model: str):
         # Step 2: Transcribe audio
         await manager.send_message("Starting transcription...")
         
-        transcript_path = await transcription_service.transcribe_file(
-            audio_path,
-            prompt,
-            model,
-            progress_callback=manager.send_message
-        )
+        try:
+            transcript_path = await transcription_service.transcribe_file(
+                audio_path,
+                prompt,
+                model,
+                progress_callback=manager.send_message
+            )
+        except FileExistsError as e:
+            # Handle duplicate transcription file
+            await manager.send_message(f"❌ {str(e)}")
+            # Clean up folders even when transcription already exists
+            clean_folder_contents(config.input_folder)
+            clean_folder_contents(config.output_folder)
+            return
         
         # Step 3: Process with AI if available and prompt provided
         if ai_service.is_available() and prompt.strip():

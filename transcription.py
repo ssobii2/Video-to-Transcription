@@ -26,15 +26,31 @@ class ModelManager:
         """Get or create a Whisper model instance"""
         model_key = f"{config.model_size.value}_{config.device}_{config.compute_type}"
         
+        # Validate model size before loading
+        if config.model_size.value == "turbo":
+            raise ValueError(
+                "The 'turbo' model is not supported by faster-whisper. "
+                "Please use 'large-v3', 'large-v2', 'medium', 'base', 'small', or 'tiny' instead."
+            )
+        
         if model_key not in self._models:
             logger.info(f"Loading Whisper model: {config.model_size.value} on {config.device}")
-            self._models[model_key] = WhisperModel(
-                config.model_size.value,
-                device=config.device,
-                compute_type=config.compute_type,
-                num_workers=config.num_workers
-            )
-            logger.info(f"Model {config.model_size.value} loaded successfully")
+            try:
+                self._models[model_key] = WhisperModel(
+                    config.model_size.value,
+                    device=config.device,
+                    compute_type=config.compute_type,
+                    num_workers=config.num_workers
+                )
+                logger.info(f"Model {config.model_size.value} loaded successfully")
+            except Exception as e:
+                if "Invalid model size 'turbo'" in str(e):
+                    raise ValueError(
+                        "The 'turbo' model is not supported by faster-whisper. "
+                        "Available models: tiny, base, small, medium, large-v1, large-v2, large-v3"
+                    ) from e
+                else:
+                    raise e
         
         return self._models[model_key]
     
@@ -462,6 +478,13 @@ class WhisperTranscriber:
         
         # If a specific model is requested, try to use it
         if model_size:
+            # Check for unsupported models
+            if model_size.lower() == "turbo":
+                raise ValueError(
+                    "The 'turbo' model is not supported by faster-whisper. "
+                    "Please use 'large-v3', 'large-v2', 'medium', 'base', 'small', or 'tiny' instead."
+                )
+            
             try:
                 # Convert string to ModelSize enum
                 from config import ModelSize
@@ -471,8 +494,7 @@ class WhisperTranscriber:
                     "small": ModelSize.SMALL,
                     "medium": ModelSize.MEDIUM,
                     "large-v2": ModelSize.LARGE,
-                    "large-v3": ModelSize.LARGE_V3,
-                    "turbo": ModelSize.TURBO
+                    "large-v3": ModelSize.LARGE_V3
                 }
                 
                 if model_size in size_mapping:
@@ -483,7 +505,7 @@ class WhisperTranscriber:
                     if self.config.hardware.has_gpu:
                         device = "cuda"
                         compute_type = "float16"
-                        num_workers = 1 if model_size in ["large-v3", "large-v2", "turbo"] else 2
+                        num_workers = 1 if model_size in ["large-v3", "large-v2"] else 2
                         batch_size = 4 if model_size in ["large-v3", "large-v2"] else 8
                     else:
                         device = "cpu"
@@ -597,8 +619,7 @@ class WhisperTranscriber:
             "small": 2.5,    # Medium-fast
             "medium": 1.5,   # Medium
             "large-v2": 0.8, # Slower
-            "large-v3": 0.7, # Slower
-            "turbo": 3.0     # Fast but good quality
+            "large-v3": 0.7  # Slower
         }
         
         model_name = model_size.value if hasattr(model_size, 'value') else str(model_size)
@@ -635,6 +656,15 @@ class TranscriptionService:
         audio_filename = os.path.basename(audio_path)
         transcript_filename = f"{os.path.splitext(audio_filename)[0]}_transcript.txt"
         transcript_path = os.path.join(self.config.transcription_folder, transcript_filename)
+        
+        # Check if transcription already exists
+        if os.path.exists(transcript_path):
+            error_msg = (
+                f"Transcription already exists: {transcript_filename}\n"
+                f"Please delete the existing transcription file first, then try again."
+            )
+            logger.warning(error_msg)
+            raise FileExistsError(error_msg)
         
         try:
             # Perform transcription with progress updates and get segments in one pass
@@ -686,7 +716,6 @@ class TranscriptionService:
             models.extend([
                 {"name": "Large v3", "size": "large-v3", "recommended": True, "description": "Highest accuracy"},
                 {"name": "Large v2", "size": "large-v2", "recommended": False, "description": "High accuracy"},
-                {"name": "Turbo", "size": "turbo", "recommended": False, "description": "Fastest with good accuracy"},
                 {"name": "Medium", "size": "medium", "recommended": False, "description": "Balanced speed/accuracy"},
                 {"name": "Base", "size": "base", "recommended": False, "description": "Fast, good accuracy"},
                 {"name": "Small", "size": "small", "recommended": False, "description": "Very fast"},

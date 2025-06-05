@@ -62,6 +62,9 @@ class MediaProcessor:
             if progress_callback:
                 await progress_callback("Preparing audio file...")
             
+            # Small delay to allow upload completion message to be seen
+            await asyncio.sleep(0.8)
+            
             audio_filename = os.path.basename(file_path)
             audio_file_path = os.path.join(self.config.output_folder, audio_filename)
             

@@ -44,7 +44,7 @@ An intelligent video and audio transcription service with adaptive model selecti
 ### System Requirements
 
 - **FFmpeg** and **FFprobe** (for media processing)
-- **UV (Recommended)** or **Python 3.11+**
+- **UV (Recommended)** or **Python 3.11**
 - **CUDA** (optional, for GPU acceleration)
 
 ### Hardware Recommendations
@@ -70,7 +70,11 @@ The easiest way to get started is with our automated setup script:
 ```bash
 git clone <repository-url>
 cd Video-to-Transcription
-python setup.py
+uv run setup.py   # Make sure to have UV installed before
+```
+or
+```bash
+python setup.py or python3.11 setup.py  # Depending on how many python versions you have installed
 ```
 
 This will automatically:
@@ -95,7 +99,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and setup project
 git clone <repository-url>
 cd Video-to-Transcription
-python setup.py  # Will detect UV and use it
+uv run setup.py
 ```
 
 **UV Workflow:**
@@ -107,6 +111,7 @@ uv venv venv -p 3.11          # Create venv/ with Python 3.11
 uv pip install <packages>     # Install packages in venv/
 uv run app.py          # Run Python using venv/
 ```
+#### No need to run above manually setup.py will manage it itself.
 
 **UV Benefits:**
 
@@ -126,7 +131,7 @@ git clone <repository-url>
 cd Video-to-Transcription
 
 # Run setup (will automatically create venv)
-python setup.py
+python3 or python3.11 setup.py   # Depending on how many python versions you have installed 
 ```
 
 **Traditional Setup:**
@@ -167,7 +172,8 @@ cd Video-to-Transcription
 # Option A: UV Environment (Recommended)
 uv venv venv -p 3.11
 uv pip install -r requirements.txt
-uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu118     # This is for GPU with CUDA support
+uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu       # This is for CPU
 
 # Option B: Virtual Environment
 python -m venv venv
@@ -176,12 +182,13 @@ venv\Scripts\activate
 # Linux/macOS
 source venv/bin/activate
 pip install -r requirements.txt
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu118     # This is for GPU with CUDA support
+uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu       # This is for CPU
 ```
 
 5. **Install FFmpeg**
 
-   - **Windows**: Download from https://ffmpeg.org/
+   - **Windows**: Download from https://ffmpeg.org/ or use `winget install ffmpeg`
    - **Linux**: `sudo apt install ffmpeg`
    - **macOS**: `brew install ffmpeg`
 
@@ -193,7 +200,10 @@ pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 ```bash
 # Start the application
-uv run python app.py
+# Activate venv first to avoid any problems
+# Windows: venv\Scripts\activate
+# Linux/Mac: source venv/bin/activate
+uv run app.py
 
 # Open your browser to http://localhost:8000
 ```
@@ -206,7 +216,7 @@ uv run python app.py
 # Linux/Mac: source venv/bin/activate
 
 # Start the application
-python app.py
+python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
 
 # Open your browser to http://localhost:8000
 ```
@@ -231,13 +241,13 @@ uv python install 3.12  # Install additional versions
 ```bash
 # Windows
 venv\Scripts\activate
-python app.py
+python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
 pip install new-package
 deactivate
 
 # Linux/macOS
 source venv/bin/activate
-python app.py
+python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
 pip install new-package
 deactivate
 ```
@@ -276,23 +286,60 @@ deactivate
 Create a `.env` file with your configuration:
 
 ```env
-# OpenAI Configuration (optional)
-OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-3.5-turbo
+# =================================================================
+# Video to Transcription Service v2.0 - Configuration
+# =================================================================
+
+# OpenAI Configuration (optional - for AI text processing features)
+OPENAI_API_KEY=your_open_ai_api_key_here
+OPENAI_MODEL=gpt-4.1       # gpt-4.1 is the default model, you can change it to any other model you want to use
 
 # Server Configuration
 HOST=0.0.0.0
 PORT=8000
 DEBUG=False
 
-# Processing Limits
-MAX_FILE_SIZE_MB=500
+# Processing Configuration
+MAX_FILE_SIZE_MB=1000
 CHUNK_DURATION=30
 
-# Advanced Options (auto-detection recommended)
-# ENVIRONMENT=auto  # auto, local, server
-# FORCE_MODEL=large-v3  # Override model selection
-# FORCE_DEVICE=auto  # auto, cuda, cpu
+# =================================================================
+# Advanced Configuration (usually not needed)
+# =================================================================
+
+# Force specific environment type (auto-detection is recommended)
+# ENVIRONMENT=auto  # Options: auto, local, server
+
+# Model override (auto-selection is recommended)
+# FORCE_MODEL=large-v3  # Options: tiny, base, small, medium, large-v2, large-v3, turbo
+
+# Hardware override (auto-detection is recommended)
+# FORCE_DEVICE=auto  # Options: auto, cuda, cpu
+
+# =================================================================
+# Notes:
+# =================================================================
+# 
+# 1. AI Features:
+#    - Add your OpenAI API key to enable AI text processing
+#    - Leave commented out to disable AI features
+#
+# 2. Hardware Detection:
+#    - The system automatically detects your hardware capabilities
+#    - GPU with 6GB+ VRAM: Uses large-v3 model for best accuracy
+#    - GPU with 4-6GB VRAM: Uses medium model
+#    - CPU only: Uses base or tiny model based on RAM
+#
+# 3. Model Selection:
+#    - Local (GPU): Prioritizes accuracy with large-v3 model
+#    - Server (CPU): Optimizes for efficiency with base/tiny models
+#    - Turbo model available for manual selection when GPU has 6GB+ VRAM
+#
+# 4. File Size Limits:
+#    - MAX_FILE_SIZE_MB: Maximum upload file size
+#    - Large files automatically use smaller models on limited hardware
+#
+# ================================================================= 
 ```
 
 ### Environment Isolation Benefits
@@ -340,18 +387,8 @@ uv python list  # Manage Python versions
 ```bash
 # Traditional server deployment
 source venv/bin/activate
-python app.py
+python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
 pip freeze > requirements.txt  # Save dependencies
-```
-
-#### Docker Deployment
-
-```dockerfile
-# Can use either UV or venv in containers
-FROM python:3.11-slim
-# Install UV for better dependency management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-# ... setup UV environment
 ```
 
 ## 🔧 Troubleshooting
@@ -390,11 +427,11 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
    # Clean start with UV (recommended)
    rm -rf venv
    uv venv venv -p 3.11
-   python setup.py
+   python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
 
    # Clean start with venv
    rm -rf venv
-   python setup.py
+   python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
    ```
 
 ### Dependency Conflicts
@@ -402,7 +439,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 1. **Clean environment setup**
 
    - Remove existing environment (`rm -rf venv`)
-   - Run `python setup.py` for fresh installation
+   - Run `setup.py` for fresh installation
 
 2. **Check environment isolation**
 
@@ -429,29 +466,6 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
    - Pin dependencies with `pip freeze`
    - Consider containerization for production
 
-## 🆕 Migration from v1.0
-
-The new version maintains compatibility while adding modern environment management:
-
-1. **Clean migration**:
-
-   ```bash
-   # Backup existing files
-   mv old-project old-project-backup
-
-   # Fresh installation with UV (recommended)
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   uv python install 3.11
-   git clone <repository-url>
-   cd Video-to-Transcription
-   python setup.py
-   ```
-
-2. **Copy configurations**:
-   ```bash
-   # Copy your old .env file
-   cp ../old-project-backup/.env .
-   ```
 
 ## 📊 Environment Comparison
 

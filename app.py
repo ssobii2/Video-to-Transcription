@@ -401,6 +401,7 @@ async def get_compatible_models():
             # Server environment - CPU only
             compatible = [
                 {"name": "Base", "size": "base", "description": "Best for CPU (recommended)", "recommended": True, "memory_req": "4GB+ RAM"},
+                {"name": "Small", "size": "small", "description": "Good accuracy for CPU", "memory_req": "4GB+ RAM"},
                 {"name": "Tiny", "size": "tiny", "description": "Fastest for limited resources", "memory_req": "2GB+ RAM"}
             ]
         

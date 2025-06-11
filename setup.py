@@ -52,7 +52,61 @@ def get_python_command():
         if Path(venv_python).exists():
             return [venv_python]
         else:
+            # For pip/venv, we should still try to find the venv python after installation
+            # Try multiple possible names like the install scripts do
+            venv_bin = Path("venv") / ("Scripts" if sys.platform == "win32" else "bin")
+            if venv_bin.exists():
+                candidates = (["python.exe", "python3.exe", "python3.11.exe"] if sys.platform == "win32" 
+                             else ["python", "python3", "python3.11", "python3.12", "python3.13"])
+                
+                for candidate in candidates:
+                    python_path = venv_bin / candidate
+                    if python_path.exists():
+                        return [str(python_path)]
+            
+            # Fallback to system Python
             return [sys.executable]
+
+def run_python_in_env(python_cmd, script, timeout=30):
+    """Run Python script in the proper environment with better error handling"""
+    try:
+        # Set working directory and environment variables for better compatibility
+        env = os.environ.copy()
+        
+        # For UV, ensure project directory is set
+        if 'uv' in python_cmd:
+            env['UV_PROJECT_DIR'] = str(Path.cwd())
+            # Also check if venv exists and set VIRTUAL_ENV
+            venv_path = Path("venv")
+            if venv_path.exists():
+                env['VIRTUAL_ENV'] = str(venv_path.absolute())
+        else:
+            # For venv, ensure VIRTUAL_ENV is set if using venv python
+            venv_path = Path("venv")
+            if venv_path.exists() and len(python_cmd) > 0 and 'venv' in python_cmd[0]:
+                env['VIRTUAL_ENV'] = str(venv_path.absolute())
+        
+        # Debug: show which Python we're using
+        python_exec = python_cmd[0] if python_cmd else "unknown"
+        print(f"🐍 Using Python: {python_exec}")
+        
+        result = subprocess.run(
+            python_cmd + ["-c", script],
+            capture_output=True, 
+            text=True, 
+            check=True,
+            timeout=timeout,
+            env=env,
+            cwd=str(Path.cwd())
+        )
+        return result
+    except subprocess.TimeoutExpired:
+        raise Exception(f"Command timed out after {timeout} seconds")
+    except subprocess.CalledProcessError as e:
+        python_exec = python_cmd[0] if python_cmd else "unknown"
+        raise Exception(f"Command failed using {python_exec}: {e}. Stderr: {e.stderr}")
+    except Exception as e:
+        raise Exception(f"Unexpected error: {e}")
 
 def main():
     """Main setup process"""
@@ -61,7 +115,7 @@ def main():
     
     # Check Python version
     if sys.version_info < (3, 11):
-        print("❌ Python 3.11+ required. Current version:", sys.version)
+        print("❌ Python 3.11 required. Current version:", sys.version)
         print("\nInstallation options:")
         print("- Local development: Install UV (https://docs.astral.sh/uv/) which includes Python 3.11")
         print("- Server deployment: Install Python 3.11 from https://python.org")
@@ -89,7 +143,7 @@ def main():
         if pkg_manager == 'uv':
             print("  uv run install_dependencies.py")
         else:
-            print("  python install_dependencies.py")
+            print("  python or python3 or python3.11 install_dependencies.py depending on how many python versions you have installed")
         sys.exit(1)
     
     # Update python_cmd after installation (venv may have been created)
@@ -101,13 +155,13 @@ def main():
         with open(".env", "w") as f:
             f.write("# OpenAI Configuration (optional - for AI features)\n")
             f.write("# OPENAI_API_KEY=your_openai_api_key_here\n")
-            f.write("# OPENAI_MODEL=gpt-3.5-turbo\n\n")
+            f.write("# OPENAI_MODEL=gpt-4.1\n\n")
             f.write("# Server Configuration\n")
             f.write("HOST=0.0.0.0\n")
             f.write("PORT=8000\n")
             f.write("DEBUG=False\n\n")
             f.write("# Processing Configuration\n")
-            f.write("MAX_FILE_SIZE_MB=500\n")
+            f.write("MAX_FILE_SIZE_MB=1000\n")
             f.write("CHUNK_DURATION=30\n")
         print("✅ .env file created")
         print("📝 Please edit .env file to add your OpenAI API key if you want AI features")
@@ -119,9 +173,9 @@ def main():
     
     # Check PyTorch
     try:
-        result = subprocess.run(
-            python_cmd + ["-c", "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"],
-            capture_output=True, text=True, check=True
+        result = run_python_in_env(
+            python_cmd, 
+            "import torch; print(f'PyTorch: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}')"
         )
         print("✅ PyTorch:", result.stdout.strip().replace('\n', ', '))
     except Exception as e:
@@ -129,7 +183,7 @@ def main():
     
     # Check faster-whisper
     try:
-        subprocess.run(python_cmd + ["-c", "import faster_whisper"], check=True)
+        run_python_in_env(python_cmd, "import faster_whisper")
         print("✅ faster-whisper installed")
     except Exception as e:
         print("❌ faster-whisper check failed:", e)
@@ -147,8 +201,7 @@ def main():
     # Step 4: Test basic functionality
     print("\n🧪 Testing basic functionality...")
     try:
-        result = subprocess.run(
-            python_cmd + ["-c", """
+        result = run_python_in_env(python_cmd, """
 from config import Config
 config = Config()
 downloaded_models = config.get_downloaded_models_info()
@@ -156,7 +209,7 @@ print(f"Environment: {config.environment.value}")
 print(f"Selected Model: {config.model_config.model_size.value}")
 print(f"Device: {config.model_config.device}")
 print(f"Downloaded Models: {downloaded_models}")
-"""], capture_output=True, text=True, check=True)
+""")
         
         print("✅ Configuration test passed:")
         for line in result.stdout.strip().split('\n'):
@@ -164,8 +217,6 @@ print(f"Downloaded Models: {downloaded_models}")
             
     except Exception as e:
         print("❌ Configuration test failed:", e)
-        if hasattr(e, 'stderr') and e.stderr:
-            print("Error details:", e.stderr)
     
     # Final instructions
     print("\n🎉 Setup Complete!")
@@ -178,7 +229,7 @@ print(f"Downloaded Models: {downloaded_models}")
         print("   🌐 Then open your browser to: http://localhost:8000")
         print()
     else:
-        print("1. 🌐 Start the application: python app.py")
+        print("1. 🌐 Start the application: python3 or python3.11 app.py")
         print()
         print("   🌐 Then open your browser to: http://localhost:8000")
         print()
@@ -196,7 +247,7 @@ print(f"Downloaded Models: {downloaded_models}")
         print("📦 Environment: UV (isolated and managed)")
     else:
         print("📦 Environment: Python virtual environment (venv)")
-        print("💡 Remember to activate the virtual environment before running commands")
+        print("💡 Remember to activate the virtual environment before running commands, venv/Scripts/activate (Windows) or source venv/bin/activate (Linux)")
     
     print("\nFor help, see the README.md file")
 

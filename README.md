@@ -70,48 +70,72 @@ The easiest way to get started is with our automated setup script:
 ```bash
 git clone <repository-url>
 cd Video-to-Transcription
-uv run setup.py   # Make sure to have UV installed before
-```
-or
-```bash
-python setup.py or python3.11 setup.py  # Depending on how many python versions you have installed
+python setup.py
 ```
 
-This will automatically:
+**Note:** Use `python3` or `python3.11` if you have multiple Python versions installed.
 
-- ✅ **UV Detection**: Detect UV and recommend installation if not found
-- ✅ **Python 3.11 Setup**: Install Python 3.11 via UV if needed
-- ✅ **Environment Creation**: Create `venv/` folder with UV or traditional venv
-- ✅ **PyTorch Installation**: Install PyTorch with appropriate CUDA support
-- ✅ **Interactive Models**: Select models based on your hardware capabilities
-- ✅ **Complete Setup**: Configuration files and verification
+## 🤖 What's Automatically Handled
 
-### Environment Options
+Our setup scripts automatically take care of many steps that you would normally do manually:
+
+### ✅ **Environment Detection & Setup**
+
+- **Platform Detection**: Automatically detects Windows/Linux and chooses appropriate installation method
+- **Package Manager Detection**: Detects UV (modern) vs pip (traditional) and uses the best available option
+- **Python Version Management**: With UV, automatically installs Python 3.11 if needed
+- **Virtual Environment Creation**: Creates isolated `venv/` folder automatically
+
+### ✅ **Dependency Management**
+
+- **PyTorch Installation**: Automatically detects CUDA version and installs appropriate PyTorch (GPU/CPU)
+- **Hardware-Optimized Setup**: Configures dependencies based on your GPU memory and CPU capabilities
+- **Requirements Installation**: Installs all Python packages in the isolated environment
+- **Version Compatibility**: Ensures all packages work together correctly
+
+### ✅ **Configuration**
+
+- **`.env` File Creation**: Automatically creates configuration file with sensible defaults
+- **Environment Variables**: Pre-configures server settings, file size limits, and processing options
+- **OpenAI Integration**: Sets up AI features (just add your API key)
+
+### ✅ **Verification & Testing**
+
+- **Installation Verification**: Tests all critical components (PyTorch, faster-whisper, etc.)
+- **Hardware Detection**: Verifies GPU/CUDA availability
+- **Import Testing**: Ensures all packages can be imported correctly
+
+### ✅ **Model Management**
+
+- **On-Demand Downloads**: Whisper models download automatically when first used
+- **Smart Storage**: Models cached in environment-specific locations
+- **Hardware-Aware Selection**: Automatically chooses optimal model size for your hardware
+
+### 📝 **What You Still Need to Do**
+
+- **Install FFmpeg**: System-level dependency (instructions provided)
+- **Add OpenAI API Key**: Edit `.env` file if you want AI features
+- **Review Configuration**: Optionally customize settings in `.env` file
+
+This automation means you can go from "git clone" to "working application" with just one command!
+
+---
+
+### Advanced Setup Options
 
 #### Option 1: UV (Recommended)
 
 UV provides the best Python management experience:
 
 ```bash
-# Install UV
+# Install UV first
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and setup project
 git clone <repository-url>
 cd Video-to-Transcription
-uv run setup.py
+python setup.py
 ```
-
-**UV Workflow:**
-
-```bash
-# UV will automatically:
-uv python install 3.11        # Install Python 3.11
-uv venv venv -p 3.11          # Create venv/ with Python 3.11
-uv pip install <packages>     # Install packages in venv/
-uv run app.py          # Run Python using venv/
-```
-#### No need to run above manually setup.py will manage it itself.
 
 **UV Benefits:**
 
@@ -131,17 +155,12 @@ git clone <repository-url>
 cd Video-to-Transcription
 
 # Run setup (will automatically create venv)
-python3 or python3.11 setup.py   # Depending on how many python versions you have installed 
+python setup.py
 ```
 
-**Traditional Setup:**
+**Note:** Use `python3` or `python3.11` if you have multiple Python versions installed.
 
-- **Automatic venv creation**: Virtual environment created automatically
-- **Environment isolation**: All dependencies installed in `venv/`, not system-wide
-- **Server-friendly**: Works on any system with Python 3.11+
-- **Manual activation**: Requires venv activation for manual commands
-
-### Manual Installation (Advanced)
+### Manual Installation (Advanced Users)
 
 If you prefer complete manual control:
 
@@ -172,8 +191,8 @@ cd Video-to-Transcription
 # Option A: UV Environment (Recommended)
 uv venv venv -p 3.11
 uv pip install -r requirements.txt
-uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu118     # This is for GPU with CUDA support
-uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu       # This is for CPU
+uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu118     # GPU with CUDA
+uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu       # CPU only
 
 # Option B: Virtual Environment
 python -m venv venv
@@ -182,8 +201,8 @@ venv\Scripts\activate
 # Linux/macOS
 source venv/bin/activate
 pip install -r requirements.txt
-pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu118     # This is for GPU with CUDA support
-uv pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu       # This is for CPU
+pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cu118     # GPU with CUDA
+pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu       # CPU only
 ```
 
 5. **Install FFmpeg**
@@ -211,15 +230,17 @@ uv run app.py
 ### With Traditional Python
 
 ```bash
-# Activate virtual environment (if using venv)
+# Activate virtual environment first
 # Windows: venv\Scripts\activate
 # Linux/Mac: source venv/bin/activate
 
 # Start the application
-python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
+python app.py
 
 # Open your browser to http://localhost:8000
 ```
+
+**Note:** Use `python3` or `python3.11` if you have multiple Python versions installed.
 
 ### Environment Management
 
@@ -241,16 +262,18 @@ uv python install 3.12  # Install additional versions
 ```bash
 # Windows
 venv\Scripts\activate
-python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
+python app.py
 pip install new-package
 deactivate
 
 # Linux/macOS
 source venv/bin/activate
-python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
+python app.py
 pip install new-package
 deactivate
 ```
+
+**Note:** Use `python3` or `python3.11` if you have multiple Python versions installed.
 
 ### Web Interface
 
@@ -283,7 +306,7 @@ deactivate
 
 ### Environment Variables
 
-Create a `.env` file with your configuration:
+The setup automatically creates a `.env` file with configuration options:
 
 ```env
 # =================================================================
@@ -291,8 +314,8 @@ Create a `.env` file with your configuration:
 # =================================================================
 
 # OpenAI Configuration (optional - for AI text processing features)
-OPENAI_API_KEY=your_open_ai_api_key_here
-OPENAI_MODEL=gpt-4.1       # gpt-4.1 is the default model, you can change it to any other model you want to use
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4.1       # gpt-4.1 is the default model
 
 # Server Configuration
 HOST=0.0.0.0
@@ -319,7 +342,7 @@ CHUNK_DURATION=30
 # =================================================================
 # Notes:
 # =================================================================
-# 
+#
 # 1. AI Features:
 #    - Add your OpenAI API key to enable AI text processing
 #    - Leave commented out to disable AI features
@@ -339,7 +362,7 @@ CHUNK_DURATION=30
 #    - MAX_FILE_SIZE_MB: Maximum upload file size
 #    - Large files automatically use smaller models on limited hardware
 #
-# ================================================================= 
+# =================================================================
 ```
 
 ### Environment Isolation Benefits
@@ -387,9 +410,11 @@ uv python list  # Manage Python versions
 ```bash
 # Traditional server deployment
 source venv/bin/activate
-python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
+python app.py
 pip freeze > requirements.txt  # Save dependencies
 ```
+
+**Note:** Use `python3` or `python3.11` if you have multiple Python versions installed.
 
 ## 🔧 Troubleshooting
 
@@ -427,11 +452,11 @@ pip freeze > requirements.txt  # Save dependencies
    # Clean start with UV (recommended)
    rm -rf venv
    uv venv venv -p 3.11
-   python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
+   python setup.py
 
    # Clean start with venv
    rm -rf venv
-   python app.py or python3 app.py or python3.11 app.py    # Depending on how many python versions you have installed
+   python setup.py
    ```
 
 ### Dependency Conflicts
@@ -439,7 +464,7 @@ pip freeze > requirements.txt  # Save dependencies
 1. **Clean environment setup**
 
    - Remove existing environment (`rm -rf venv`)
-   - Run `setup.py` for fresh installation
+   - Run `python setup.py` for fresh installation
 
 2. **Check environment isolation**
 
@@ -447,41 +472,66 @@ pip freeze > requirements.txt  # Save dependencies
    # Verify you're in the right environment
    which python
    python -c "import sys; print(sys.prefix)"
-
-   # With UV
-   uv run python -c "import sys; print(sys.prefix)"
    ```
 
-### Performance Optimization
+### Common Issues
 
-1. **For Local Use (UV)**:
+1. **Python version problems**
 
-   - Use UV for fastest dependency management
-   - Models cached in UV-managed location
-   - Automatic Python version management
-   - Use `uv run` for all Python commands
+   - Use `python3` or `python3.11` if `python` points to Python 2.x
+   - Install Python 3.11 from https://python.org or use UV
 
-2. **For Server Deployment (venv)**:
-   - Use venv for predictable server environments
-   - Pin dependencies with `pip freeze`
-   - Consider containerization for production
+2. **FFmpeg not found**
 
+   - **Windows**: Download from https://ffmpeg.org/ or `winget install ffmpeg`
+   - **Linux**: `sudo apt install ffmpeg`
+   - **macOS**: `brew install ffmpeg`
 
-## 📊 Environment Comparison
+3. **GPU not detected**
 
-| Feature               | UV Environment | Virtual Environment | System Python       |
-| --------------------- | -------------- | ------------------- | ------------------- |
-| **Isolation**         | ✅ Complete    | ✅ Complete         | ❌ None             |
-| **Python Management** | ✅ Automatic   | ⚠️ Manual           | ⚠️ System-dependent |
-| **Dependency Speed**  | ✅ Very Fast   | ⚠️ Standard         | ⚠️ Standard         |
-| **Server Deployment** | ✅ Excellent   | ✅ Good             | ❌ Not recommended  |
-| **Local Development** | ✅ Excellent   | ✅ Good             | ❌ Not recommended  |
-| **Cleanup**           | ✅ Easy        | ✅ Easy             | ❌ Impossible       |
-| **Version Conflicts** | ✅ None        | ⚠️ Possible         | ❌ Common           |
-| **Setup Complexity**  | ✅ Simple      | ⚠️ Manual           | ❌ Complex          |
+   - Install NVIDIA drivers and CUDA toolkit
+   - Verify with: `nvidia-smi`
+   - Restart after driver installation
 
-**Recommendation**: Use UV for both local development and server deployment. Fallback to venv only when UV is not available.
+4. **Model download issues**
+
+   - Check internet connection
+   - Ensure sufficient disk space (models can be 1-3GB)
+   - Models download automatically on first use
+
+5. **Port already in use**
+
+   - Change PORT in `.env` file
+   - Or stop other applications using port 8000
+
+### Getting Help
+
+1. **Check logs**: Application logs show detailed error information
+2. **Environment verification**: Run `python setup.py` to re-verify installation
+3. **Clean reinstall**: Remove `venv/` folder and run setup again
+4. **Hardware compatibility**: Check if your hardware meets minimum requirements
+
+## 📊 Performance Tips
+
+### Local Development
+
+- **Use UV**: Faster dependency management and installation
+- **GPU acceleration**: Ensure CUDA is properly installed for faster processing
+- **Model selection**: Use larger models for better accuracy when hardware allows
+
+### Server Deployment
+
+- **CPU optimization**: Use smaller models (tiny/base) for faster processing
+- **Memory management**: Monitor RAM usage with larger files
+- **File size limits**: Adjust `MAX_FILE_SIZE_MB` based on server capabilities
+
+## 🔐 Security Notes
+
+- **Environment isolation**: All dependencies contained in `venv/` folder
+- **No system changes**: Installation doesn't modify system Python or packages
+- **Clean removal**: Delete project folder to completely remove all traces
+- **API keys**: Store securely in `.env` file (not in version control)
 
 ---
 
-**Note**: This v2.0 architecture prioritizes UV for modern Python environment management while maintaining full compatibility with traditional virtual environments. The `venv/` folder approach ensures consistency regardless of the underlying package manager.
+**🎉 Ready to get started?** Simply run `python setup.py` and you'll be transcribing in minutes!

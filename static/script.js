@@ -380,7 +380,7 @@ async function handleUpload() {
       const duplicateResult = await duplicateResponse.json();
       
       if (duplicateResult.exists) {
-        displayMessage(`ℹ️ File Already Processed\n\n${duplicateResult.message}\n\nYou can find the existing files in the sections below.`);
+        updateMessage(`ℹ️ File Already Processed - ${duplicateResult.message}. You can find the existing files in the sections below.`);
         return;
       }
     } else {
@@ -758,7 +758,7 @@ async function downloadModel(modelName) {
       btn.disabled = true;
     });
 
-    displayMessage(`📥 Starting download for ${modelName} model...`);
+    updateMessage(`📥 Starting download for ${modelName} model...`);
 
     // Setup WebSocket for real-time updates if not already connected
     if (!window.downloadWebSocket) {
@@ -777,9 +777,9 @@ async function downloadModel(modelName) {
       const data = await response.json();
       LoadingManager.updateText(
         "Download started",
-        "Progress updates will appear below"
+        "Progress updates will appear above"
       );
-      displayMessage(`${data.message} - Watch for progress updates below.`);
+              updateMessage(`${data.message} - Watch for progress updates above.`);
 
       // Keep the button disabled and show downloading state
       downloadButtons.forEach((btn) => {
@@ -796,9 +796,9 @@ async function downloadModel(modelName) {
 
       // Handle turbo model error specifically
       if (errorData.detail && errorData.detail.includes("turbo")) {
-        displayError(`❌ Model Not Supported\n\n${errorData.detail}`);
+        updateMessage(`❌ Model Not Supported - ${errorData.detail}`);
       } else {
-        displayError(errorData.detail || "Error downloading model");
+        updateMessage(`❌ Error downloading model: ${errorData.detail || "Unknown error"}`);
       }
 
       // Re-enable download buttons on error
@@ -812,7 +812,7 @@ async function downloadModel(modelName) {
   } catch (error) {
     LoadingManager.hide();
     console.error("Error downloading model:", error);
-    displayError("Error downloading model");
+    updateMessage("❌ Error downloading model");
 
     // Re-enable download buttons on error
     const downloadButtons = document.querySelectorAll(
@@ -871,7 +871,7 @@ function setupDownloadWebSocket() {
 
           // Refresh models list to show the newly downloaded model
           loadModels();
-          displayMessage(`✅ ${modelName} model is now ready for use!`);
+          updateMessage(`✅ ${modelName} model is now ready for use!`);
 
           // Auto-hide status after 3 seconds
           setTimeout(() => {
@@ -946,7 +946,7 @@ async function deleteModel(modelName) {
       "Deleting model...",
       `Removing ${modelName} model from storage`
     );
-    displayMessage(`Deleting ${modelName} model...`);
+    updateMessage(`Deleting ${modelName} model...`);
 
     const response = await fetch(`/api/models/${modelName}`, {
       method: "DELETE",
@@ -954,7 +954,7 @@ async function deleteModel(modelName) {
 
     if (response.ok) {
       LoadingManager.updateText("Model deleted", "Refreshing model list");
-      displayMessage(`${modelName} model deleted successfully!`);
+              updateMessage(`${modelName} model deleted successfully!`);
       // Refresh models list
       await loadModels();
       LoadingManager.hide();
@@ -969,12 +969,12 @@ async function deleteModel(modelName) {
     } else {
       LoadingManager.hide();
       const errorData = await response.json();
-      displayError(errorData.detail || "Error deleting model");
+      updateMessage(`❌ Error deleting model: ${errorData.detail || "Unknown error"}`);
     }
   } catch (error) {
     LoadingManager.hide();
     console.error("Error deleting model:", error);
-    displayError("Error deleting model");
+    updateMessage("❌ Error deleting model");
   }
 }
 
@@ -1146,14 +1146,14 @@ async function deleteTranscription(filename) {
     if (response.ok) {
       LoadingManager.hide();
       listTranscriptions();
-      displayMessage(`${filename} deleted successfully`);
+      updateMessage(`${filename} deleted successfully`);
     } else {
       LoadingManager.hide();
-      displayError("Error deleting transcription.");
+      updateMessage("❌ Error deleting transcription.");
     }
   } catch (error) {
     LoadingManager.hide();
-    displayError("Error deleting transcription.");
+    updateMessage("❌ Error deleting transcription.");
   }
 }
 
@@ -1179,14 +1179,14 @@ async function deleteAIResponse(filename) {
     if (response.ok) {
       LoadingManager.hide();
       listAIResponses();
-      displayMessage(`${filename} deleted successfully`);
+      updateMessage(`${filename} deleted successfully`);
     } else {
       LoadingManager.hide();
-      displayError("Error deleting AI response.");
+      updateMessage("❌ Error deleting AI response.");
     }
   } catch (error) {
     LoadingManager.hide();
-    displayError("Error deleting AI response.");
+    updateMessage("❌ Error deleting AI response.");
   }
 }
 
@@ -1272,7 +1272,10 @@ function updateMessage(message) {
     if (
       message.includes("Processing completed successfully") ||
       message.includes("❌") ||
-      message.includes("Processing failed")
+      message.includes("Processing failed") ||
+      message.includes("deleted successfully") ||
+      message.includes("is now ready for use") ||
+      message.includes("ℹ️ File Already Processed")
     ) {
       // Keep it visible for a few seconds so user can see completion message
       setTimeout(() => {

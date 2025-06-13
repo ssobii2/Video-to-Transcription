@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 # Load environment variables from .env file
 load_dotenv()
 
-from config import Config, Environment
+from config import Config
 from utils import allowed_file, clean_folder_contents, get_file_size_mb, safe_filename, validate_environment
 from media_processor import MediaProcessor
 from transcription import TranscriptionService
@@ -39,7 +39,6 @@ ai_service = AIService(config)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Video to Transcription Service v2.0")
-    logger.info(f"Environment: {config.environment.value}")
     logger.info(f"Hardware: {config.hardware.cpu_cores} CPU cores, {config.hardware.ram_gb:.1f}GB RAM")
     
     if config.hardware.has_gpu:
@@ -151,7 +150,6 @@ async def get_status():
     """Get system status and configuration"""
     return JSONResponse({
         "status": "running",
-        "environment": config.environment.value,
         "model_info": config.get_model_info(),
         "ai_available": ai_service.is_available(),
         "supported_formats": media_processor.get_supported_formats()
@@ -386,24 +384,71 @@ async def get_compatible_models():
             except:
                 pass
         
+        # Show only models that the hardware can realistically handle
         if cuda_version or config.hardware.has_gpu:
-            # Local environment with GPU
-            compatible = [
-                {"name": "Large-v3", "size": "large-v3", "description": "Highest accuracy (recommended)", "recommended": True, "memory_req": "6GB+ VRAM"},
-                {"name": "Large-v2", "size": "large-v2", "description": "High accuracy", "memory_req": "6GB+ VRAM"},
-
-                {"name": "Medium", "size": "medium", "description": "Balanced speed/accuracy", "memory_req": "2GB+ VRAM"},
-                {"name": "Base", "size": "base", "description": "Fast, good accuracy", "memory_req": "1GB+ VRAM"},
-                {"name": "Small", "size": "small", "description": "Very fast", "memory_req": "1GB+ VRAM"},
-                {"name": "Tiny", "size": "tiny", "description": "Fastest, lower accuracy", "memory_req": "512MB+ VRAM"}
-            ]
+            # GPU available - filter by VRAM capacity
+            if config.hardware.gpu_memory_gb >= 8:
+                # High-end GPU: Can handle all models efficiently
+                compatible = [
+                    {"name": "Large-v3", "size": "large-v3", "description": "Highest accuracy (recommended)", "recommended": True, "memory_req": "6GB+ VRAM"},
+                    {"name": "Large-v2", "size": "large-v2", "description": "Very high accuracy", "recommended": False, "memory_req": "6GB+ VRAM"},
+                    {"name": "Medium", "size": "medium", "description": "Good accuracy", "recommended": False, "memory_req": "2GB+ VRAM"},
+                    {"name": "Small", "size": "small", "description": "Decent accuracy", "recommended": False, "memory_req": "1GB+ VRAM"},
+                    {"name": "Base", "size": "base", "description": "Good balance", "recommended": False, "memory_req": "1GB+ VRAM"},
+                    {"name": "Tiny", "size": "tiny", "description": "Basic accuracy", "recommended": False, "memory_req": "512MB+ VRAM"}
+                ]
+            elif config.hardware.gpu_memory_gb >= 6:
+                # Mid-range GPU: Can handle large models but may be slower
+                compatible = [
+                    {"name": "Large-v3", "size": "large-v3", "description": "Highest accuracy (recommended)", "recommended": True, "memory_req": "6GB+ VRAM"},
+                    {"name": "Large-v2", "size": "large-v2", "description": "Very high accuracy", "recommended": False, "memory_req": "6GB+ VRAM"},
+                    {"name": "Medium", "size": "medium", "description": "Good accuracy", "recommended": False, "memory_req": "2GB+ VRAM"},
+                    {"name": "Small", "size": "small", "description": "Decent accuracy", "recommended": False, "memory_req": "1GB+ VRAM"},
+                    {"name": "Base", "size": "base", "description": "Good balance", "recommended": False, "memory_req": "1GB+ VRAM"},
+                    {"name": "Tiny", "size": "tiny", "description": "Basic accuracy", "recommended": False, "memory_req": "512MB+ VRAM"}
+                ]
+            elif config.hardware.gpu_memory_gb >= 4:
+                # Lower-end GPU: Large models may cause memory issues
+                compatible = [
+                    {"name": "Medium", "size": "medium", "description": "Highest practical accuracy (recommended)", "recommended": True, "memory_req": "2GB+ VRAM"},
+                    {"name": "Small", "size": "small", "description": "Good accuracy", "recommended": False, "memory_req": "1GB+ VRAM"},
+                    {"name": "Base", "size": "base", "description": "Decent accuracy", "recommended": False, "memory_req": "1GB+ VRAM"},
+                    {"name": "Tiny", "size": "tiny", "description": "Basic accuracy", "recommended": False, "memory_req": "512MB+ VRAM"}
+                ]
+            else:
+                # Very low VRAM: Only smaller models
+                compatible = [
+                    {"name": "Small", "size": "small", "description": "Best accuracy for low VRAM (recommended)", "recommended": True, "memory_req": "1GB+ VRAM"},
+                    {"name": "Base", "size": "base", "description": "Good balance", "recommended": False, "memory_req": "1GB+ VRAM"},
+                    {"name": "Tiny", "size": "tiny", "description": "Basic accuracy", "recommended": False, "memory_req": "512MB+ VRAM"}
+                ]
         else:
-            # Server environment - CPU only
-            compatible = [
-                {"name": "Base", "size": "base", "description": "Best for CPU (recommended)", "recommended": True, "memory_req": "4GB+ RAM"},
-                {"name": "Small", "size": "small", "description": "Good accuracy for CPU", "memory_req": "4GB+ RAM"},
-                {"name": "Tiny", "size": "tiny", "description": "Fastest for limited resources", "memory_req": "2GB+ RAM"}
-            ]
+            # CPU only - filter by RAM and CPU power
+            if config.hardware.ram_gb >= 15 and config.hardware.cpu_cores >= 8:
+                # High-end CPU: Can handle large models (though slowly)
+                compatible = [
+                    {"name": "Large-v3", "size": "large-v3", "description": "Highest accuracy (recommended)", "recommended": True, "memory_req": "6GB+ RAM"},
+                    {"name": "Large-v2", "size": "large-v2", "description": "Very high accuracy", "recommended": False, "memory_req": "6GB+ RAM"},
+                    {"name": "Medium", "size": "medium", "description": "Good accuracy", "recommended": False, "memory_req": "3GB+ RAM"},
+                    {"name": "Small", "size": "small", "description": "Decent accuracy", "recommended": False, "memory_req": "2GB+ RAM"},
+                    {"name": "Base", "size": "base", "description": "Good balance", "recommended": False, "memory_req": "1GB+ RAM"},
+                    {"name": "Tiny", "size": "tiny", "description": "Basic accuracy", "recommended": False, "memory_req": "512MB+ RAM"}
+                ]
+            elif config.hardware.ram_gb >= 7 and config.hardware.cpu_cores >= 4:
+                # Mid-range CPU: Can handle medium models efficiently
+                compatible = [
+                    {"name": "Medium", "size": "medium", "description": "Highest practical accuracy (recommended)", "recommended": True, "memory_req": "3GB+ RAM"},
+                    {"name": "Small", "size": "small", "description": "Good accuracy", "recommended": False, "memory_req": "2GB+ RAM"},
+                    {"name": "Base", "size": "base", "description": "Decent accuracy", "recommended": False, "memory_req": "1GB+ RAM"},
+                    {"name": "Tiny", "size": "tiny", "description": "Basic accuracy", "recommended": False, "memory_req": "512MB+ RAM"}
+                ]
+            else:
+                # Limited CPU: Only smaller models that won't overwhelm the system
+                compatible = [
+                    {"name": "Small", "size": "small", "description": "Highest practical accuracy (recommended)", "recommended": True, "memory_req": "2GB+ RAM"},
+                    {"name": "Base", "size": "base", "description": "Good accuracy", "recommended": False, "memory_req": "1GB+ RAM"},
+                    {"name": "Tiny", "size": "tiny", "description": "Basic accuracy", "recommended": False, "memory_req": "512MB+ RAM"}
+                ]
         
         return JSONResponse({
             "compatible_models": compatible,
@@ -447,24 +492,42 @@ async def upload_file(file: UploadFile = File(...), prompt: str = Form(""), mode
         if not model:
             raise HTTPException(status_code=400, detail="No model selected")
         
-        # Check file size
-        file_content = await file.read()
-        file_size_mb = len(file_content) / (1024 * 1024)
-        
-        if file_size_mb > config.max_file_size_mb:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large. Maximum size: {config.max_file_size_mb} MB"
-            )
-        
-        # Clean input folder and save file
+        # Clean input folder and save file using chunked approach (like main_old.py)
         clean_folder_contents(config.input_folder)
         
         safe_name = safe_filename(file.filename)
         file_path = os.path.join(config.input_folder, safe_name)
         
+        # Check for duplicate transcriptions before saving file
+        transcript_filename = f"{os.path.splitext(safe_name)[0]}_transcript.txt"
+        transcript_path = os.path.join(config.transcription_folder, transcript_filename)
+        
+        if os.path.exists(transcript_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Transcription already exists: {transcript_filename}. Please delete the existing transcription file first, then try again."
+            )
+        
+        # Save file using chunked upload to handle large files (adapted from main_old.py)
+        file_size_mb = 0
         with open(file_path, 'wb') as f:
-            f.write(file_content)
+            while True:
+                chunk = await file.read(1024 * 1024)  # Read 1MB chunks
+                if not chunk:
+                    break
+                f.write(chunk)
+                file_size_mb += len(chunk) / (1024 * 1024)
+                
+                # Check size limit during upload
+                if file_size_mb > config.max_file_size_mb:
+                    # Clean up partial file
+                    f.close()
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Maximum size: {config.max_file_size_mb} MB"
+                    )
         
         logger.info(f"File uploaded: {safe_name} ({file_size_mb:.1f} MB)")
         logger.info(f"Model selected: {model}")

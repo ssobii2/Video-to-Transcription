@@ -252,7 +252,7 @@ function updateSystemInfoDisplay() {
   const hardwareInfo = document.getElementById("hardware-info");
   const hardware = systemInfo.model_info.hardware;
 
-  let infoText = `${systemInfo.environment.toUpperCase()}`;
+  let infoText = "SYSTEM";
 
   if (hardware.has_gpu) {
     infoText += ` | GPU: ${hardware.gpu_name} (${hardware.gpu_memory_gb.toFixed(
@@ -292,10 +292,14 @@ function updateModelSelect() {
   availableModels.forEach((model) => {
     const option = document.createElement("option");
     option.value = model.size;
-    option.textContent = `${model.name} - ${model.description}`;
-
-    if (model.recommended) {
-      option.textContent += " (Recommended)";
+    
+    if (model.description.toLowerCase().includes("recommended")) {
+      option.textContent = `${model.name} - ${model.description}`;
+    } else {
+      option.textContent = `${model.name} - ${model.description}`;
+      if (model.recommended) {
+        option.textContent += " (Recommended)";
+      }
     }
 
     // Disable if not installed
@@ -441,31 +445,50 @@ async function handleUpload() {
         "none";
 
       if (xhr.status === 200) {
-        const responseData = JSON.parse(xhr.responseText);
-        if (responseData.error) {
-          displayError(responseData.error);
-        } else {
-          listTranscriptions();
-          listAIResponses();
+        try {
+          const responseData = JSON.parse(xhr.responseText);
+          if (responseData.error) {
+            displayError(responseData.error);
+          } else {
+            listTranscriptions();
+            listAIResponses();
+          }
+        } catch (e) {
+          console.error("Error parsing response:", e);
+          displayError("Unexpected response format from server");
         }
       } else {
-        const responseData = JSON.parse(xhr.responseText);
-
-        // Handle duplicate file errors specifically
-        if (
-          xhr.status === 400 &&
-          responseData.detail &&
-          (responseData.detail.includes("already exists") ||
-            responseData.detail.includes("Transcription already exists"))
-        ) {
-          displayError(
-            `⚠️ Duplicate File Detected\n\n${responseData.detail}\n\nPlease delete the existing transcription file from the "Transcription Files" section below, then try again.`
-          );
-        } else {
-          displayError(
-            responseData.detail || responseData.error || "Error uploading file."
-          );
+        // Handle error responses - check if response is JSON or HTML
+        let errorMessage = "Error uploading file.";
+        
+        try {
+          const responseData = JSON.parse(xhr.responseText);
+          
+          // Handle specific HTTP error codes
+          if (xhr.status === 413) {
+            errorMessage = `⚠️ File Too Large\n\n${responseData.detail || "The file you're trying to upload is too large. Please try a smaller file or check the server configuration."}\n\nNote: Check nginx client_max_body_size setting if this persists.`;
+          } else if (
+            xhr.status === 400 &&
+            responseData.detail &&
+            (responseData.detail.includes("already exists") ||
+              responseData.detail.includes("Transcription already exists"))
+          ) {
+            errorMessage = `⚠️ Duplicate File Detected\n\n${responseData.detail}\n\nPlease delete the existing transcription file from the "Transcription Files" section below, then try again.`;
+          } else {
+            errorMessage = responseData.detail || responseData.error || `Server error (${xhr.status})`;
+          }
+        } catch (e) {
+          // Response is not JSON (likely HTML error page from nginx)
+          console.error("Non-JSON response received:", xhr.responseText);
+          
+          if (xhr.status === 413) {
+            errorMessage = `⚠️ File Too Large (413 Error)\n\nThe file you're trying to upload exceeds the server's size limit.\n\nThis is likely a server configuration issue. Please:\n1. Try a smaller file\n2. Check nginx client_max_body_size setting\n3. Check FastAPI's max file size configuration`;
+          } else {
+            errorMessage = `Server Error (${xhr.status})\n\nReceived an unexpected response from the server. Please try again or contact support if the issue persists.`;
+          }
         }
+        
+        displayError(errorMessage);
       }
     };
 

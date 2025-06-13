@@ -323,7 +323,7 @@ PORT=8000
 DEBUG=False
 
 # Processing Configuration
-MAX_FILE_SIZE_MB=1000
+MAX_FILE_SIZE_MB=5000
 CHUNK_DURATION=30
 
 # =================================================================

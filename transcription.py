@@ -709,24 +709,46 @@ class TranscriptionService:
             raise
     
     async def get_available_models(self) -> list:
-        """Get list of available models based on hardware"""
+        """Get list of available models based on hardware - prioritize accuracy"""
         models = []
         
-        if self.config.environment.value == "local" and self.config.hardware.has_gpu:
+        if self.config.hardware.has_gpu:
+            # GPU models - always recommend large-v3 for highest accuracy
             models.extend([
-                {"name": "Large v3", "size": "large-v3", "recommended": True, "description": "Highest accuracy"},
-                {"name": "Large v2", "size": "large-v2", "recommended": False, "description": "High accuracy"},
-                {"name": "Medium", "size": "medium", "recommended": False, "description": "Balanced speed/accuracy"},
-                {"name": "Base", "size": "base", "recommended": False, "description": "Fast, good accuracy"},
-                {"name": "Small", "size": "small", "recommended": False, "description": "Very fast"},
-                {"name": "Tiny", "size": "tiny", "recommended": False, "description": "Fastest, lower accuracy"}
+                {"name": "Large v3", "size": "large-v3", "recommended": True, "description": "Highest accuracy (recommended)", "memory_req": "~6GB VRAM"},
+                {"name": "Large v2", "size": "large-v2", "recommended": False, "description": "Very high accuracy", "memory_req": "~6GB VRAM"},
+                {"name": "Medium", "size": "medium", "recommended": False, "description": "Good accuracy", "memory_req": "~2GB VRAM"},
+                {"name": "Small", "size": "small", "recommended": False, "description": "Decent accuracy", "memory_req": "~1GB VRAM"},
+                {"name": "Base", "size": "base", "recommended": False, "description": "Good balance", "memory_req": "~1GB VRAM"},
+                {"name": "Tiny", "size": "tiny", "recommended": False, "description": "Basic accuracy", "memory_req": "~0.5GB VRAM"}
             ])
         else:
-            # Server/CPU models
-            models.extend([
-                {"name": "Base", "size": "base", "recommended": True, "description": "Best for CPU"},
-                {"name": "Small", "size": "small", "recommended": False, "description": "Faster, good accuracy"},
-                {"name": "Tiny", "size": "tiny", "recommended": False, "description": "Fastest for limited resources"}
-            ])
-        
+            # CPU models - prioritize accuracy based on CPU power
+            if self.config.hardware.ram_gb >= 15 and self.config.hardware.cpu_cores >= 8:
+                # High-end CPU: recommend large-v3 for highest accuracy
+                models.extend([
+                    {"name": "Large v3", "size": "large-v3", "recommended": True, "description": "Highest accuracy (recommended)", "memory_req": "~6GB RAM"},
+                    {"name": "Large v2", "size": "large-v2", "recommended": False, "description": "Very high accuracy", "memory_req": "~6GB RAM"},
+                    {"name": "Medium", "size": "medium", "recommended": False, "description": "Good accuracy", "memory_req": "~3GB RAM"},
+                    {"name": "Small", "size": "small", "recommended": False, "description": "Decent accuracy", "memory_req": "~2GB RAM"},
+                    {"name": "Base", "size": "base", "recommended": False, "description": "Good balance", "memory_req": "~1GB RAM"},
+                    {"name": "Tiny", "size": "tiny", "recommended": False, "description": "Basic accuracy", "memory_req": "~0.5GB RAM"}
+                ])
+            elif self.config.hardware.ram_gb >= 7 and self.config.hardware.cpu_cores >= 4:
+                # Mid-range CPU: recommend medium for highest practical accuracy
+                models.extend([
+                    {"name": "Medium", "size": "medium", "recommended": True, "description": "Highest practical accuracy (recommended)", "memory_req": "~3GB RAM"},
+                    {"name": "Small", "size": "small", "recommended": False, "description": "Good accuracy", "memory_req": "~2GB RAM"},
+                    {"name": "Base", "size": "base", "recommended": False, "description": "Decent accuracy", "memory_req": "~1GB RAM"},
+                    {"name": "Tiny", "size": "tiny", "recommended": False, "description": "Basic accuracy", "memory_req": "~0.5GB RAM"}
+                ])
+            else:
+                # Limited CPU: recommend small for highest practical accuracy
+                models.extend([
+                    {"name": "Small", "size": "small", "recommended": True, "description": "Highest practical accuracy (recommended)", "memory_req": "~2GB RAM"},
+                    {"name": "Base", "size": "base", "recommended": False, "description": "Good accuracy", "memory_req": "~1GB RAM"},
+                    {"name": "Tiny", "size": "tiny", "recommended": False, "description": "Basic accuracy", "memory_req": "~0.5GB RAM"},
+                    {"name": "Medium", "size": "medium", "recommended": False, "description": "High accuracy (very slow)", "memory_req": "~3GB RAM"}
+                ])
+
         return models 

@@ -161,7 +161,7 @@ def main():
             f.write("PORT=8000\n")
             f.write("DEBUG=False\n\n")
             f.write("# Processing Configuration\n")
-            f.write("MAX_FILE_SIZE_MB=1000\n")
+            f.write("MAX_FILE_SIZE_MB=5000\n")
             f.write("CHUNK_DURATION=30\n")
         print("✅ .env file created")
         print("📝 Please edit .env file to add your OpenAI API key if you want AI features")
@@ -205,7 +205,7 @@ def main():
 from config import Config
 config = Config()
 downloaded_models = config.get_downloaded_models_info()
-print(f"Environment: {config.environment.value}")
+print(f"Hardware: {config.hardware.cpu_cores} CPU cores, {config.hardware.ram_gb:.1f}GB RAM, GPU: {config.hardware.has_gpu}")
 print(f"Selected Model: {config.model_config.model_size.value}")
 print(f"Device: {config.model_config.device}")
 print(f"Downloaded Models: {downloaded_models}")

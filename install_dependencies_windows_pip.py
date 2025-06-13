@@ -407,24 +407,51 @@ if torch.cuda.is_available():
         return False
 
 def get_available_models_for_hardware(cuda_version=None):
-    """Get list of available models based on hardware"""
+    """Get list of available models based on hardware - prioritize accuracy"""
+    import psutil
+    
+    # Get system specs
+    cpu_cores = psutil.cpu_count(logical=False) or 1
+    ram_gb = psutil.virtual_memory().total / (1024**3)
+    
     if cuda_version:
-        # GPU available - all models
+        # GPU available - always recommend Large-v3 for highest accuracy
         return {
-            "tiny": "Fastest, lowest quality (~39 MB)",
-            "base": "Good balance of speed and quality (~74 MB)", 
-            "small": "Better quality, slower (~244 MB)",
-            "medium": "High quality, much slower (~769 MB)",
-            "large-v2": "Highest quality, very slow (~1550 MB)",
-            "large-v3": "Latest large model, very slow (~1550 MB)"
+            "large-v3": "Highest accuracy, latest model (~1550 MB) - RECOMMENDED",
+            "large-v2": "Very high accuracy (~1550 MB)",
+            "medium": "Good accuracy (~769 MB)",
+            "small": "Decent accuracy (~244 MB)", 
+            "base": "Good balance (~74 MB)",
+            "tiny": "Basic accuracy (~39 MB)"
         }
     else:
-        # CPU only - recommend smaller models
-        return {
-            "tiny": "Fastest, lowest quality (~39 MB) - Recommended for CPU",
-            "base": "Good balance, usable on CPU (~74 MB)",
-            "small": "Better quality, slow on CPU (~244 MB)",
-        }
+        # CPU only - recommend highest accuracy model based on hardware capability
+        if ram_gb >= 15 and cpu_cores >= 8:
+            # High-end CPU - can handle large models, recommend Large-v3
+            return {
+                "large-v3": "Highest accuracy (~1550 MB) - RECOMMENDED",
+                "large-v2": "Very high accuracy (~1550 MB)",
+                "medium": "Good accuracy (~769 MB)",
+                "small": "Decent accuracy (~244 MB)",
+                "base": "Good balance (~74 MB)",
+                "tiny": "Basic accuracy (~39 MB)"
+            }
+        elif ram_gb >= 7 and cpu_cores >= 4:
+            # Mid-range CPU - recommend Medium as highest practical accuracy
+            return {
+                "medium": "Highest practical accuracy (~769 MB) - RECOMMENDED",
+                "small": "Good accuracy (~244 MB)",
+                "base": "Decent accuracy (~74 MB)",
+                "tiny": "Basic accuracy (~39 MB)"
+            }
+        else:
+            # Limited CPU - recommend Small as highest practical accuracy
+            return {
+                "small": "Highest practical accuracy (~244 MB) - RECOMMENDED",
+                "base": "Good accuracy (~74 MB)",
+                "tiny": "Basic accuracy (~39 MB)",
+                "medium": "High accuracy, very slow (~769 MB)"
+            }
 
 def interactive_model_selection(cuda_version=None):
     """Interactive model selection for download"""
@@ -644,7 +671,7 @@ PORT=8000
 DEBUG=False
 
 # Processing Configuration
-MAX_FILE_SIZE_MB=1000
+MAX_FILE_SIZE_MB=5000
 CHUNK_DURATION=30
 
 # =================================================================

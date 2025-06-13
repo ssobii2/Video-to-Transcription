@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-class Environment(Enum):
-    LOCAL = "local"
-    SERVER = "server"
-    AUTO = "auto"
+# Environment enum removed - using hardware-based detection only
 
 class ModelSize(Enum):
     TINY = "tiny"
@@ -71,14 +68,12 @@ class ModelConfig:
 class Config:
     """Main configuration class"""
     
-    def __init__(self, environment: Environment = Environment.AUTO):
+    def __init__(self):
         # Get the absolute path to the project root (where this config.py file is located)
         self.project_root = Path(__file__).parent.absolute()
         
-        # Detect hardware first
+        # Detect hardware and configure models based on hardware only
         self.hardware = HardwareInfo.detect()
-        # Then detect environment (which needs hardware info)
-        self.environment = self._detect_environment() if environment == Environment.AUTO else environment
         self.model_config = self._get_optimal_model_config()
         
         # Paths - use absolute paths based on project root
@@ -94,7 +89,7 @@ class Config:
         }
         
         # Processing settings
-        self.max_file_size_mb = int(os.getenv('MAX_FILE_SIZE_MB', '500'))
+        self.max_file_size_mb = int(os.getenv('MAX_FILE_SIZE_MB', '5000'))  # Increased to 1GB default
         self.chunk_duration = int(os.getenv('CHUNK_DURATION', '30'))
         
         # OpenAI settings
@@ -108,15 +103,6 @@ class Config:
         
         # Ensure directories exist
         self._create_directories()
-    
-    def _detect_environment(self) -> Environment:
-        """Auto-detect if running locally or on server based on hardware"""
-        if self.hardware.has_gpu and self.hardware.gpu_memory_gb >= 4:
-            return Environment.LOCAL
-        elif self.hardware.ram_gb <= 6 and self.hardware.cpu_cores <= 4:
-            return Environment.SERVER
-        else:
-            return Environment.LOCAL
     
     def _get_downloaded_models(self) -> List[ModelSize]:
         """Check which models are actually downloaded and cached"""
@@ -172,90 +158,100 @@ class Config:
         return downloaded_models
 
     def _get_optimal_model_config(self) -> ModelConfig:
-        """Select optimal model configuration based on hardware, environment, and downloaded models"""
+        """Select optimal model configuration based on hardware and downloaded models"""
         
         # Check which models are downloaded
         downloaded_models = self._get_downloaded_models()
         
-        if self.environment == Environment.LOCAL:
-            return self._get_local_config(downloaded_models)
+        # Use GPU config if GPU available, otherwise CPU config
+        if self.hardware.has_gpu:
+            return self._get_gpu_config(downloaded_models)
         else:
-            return self._get_server_config(downloaded_models)
+            return self._get_cpu_config(downloaded_models)
     
-    def _get_local_config(self, downloaded_models: List[ModelSize] = None) -> ModelConfig:
-        """Optimal configuration for local environment (with GPU)"""
+    def _get_gpu_config(self, downloaded_models: List[ModelSize] = None) -> ModelConfig:
+        """GPU-optimized configuration - prioritize accuracy"""
         if downloaded_models is None:
             downloaded_models = []
             
-        if self.hardware.has_gpu:
-            # Define preference order based on GPU memory
-            if self.hardware.gpu_memory_gb >= 8:
-                # High-end GPU: prefer largest available models
-                preferred_order = [ModelSize.LARGE_V3, ModelSize.LARGE, ModelSize.MEDIUM, ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
-                config_template = {
-                    "device": "cuda",
-                    "compute_type": "float16",
-                    "num_workers": 2,
-                    "batch_size": 8
-                }
-            elif self.hardware.gpu_memory_gb >= 6:
-                # Mid-range GPU: prefer large models
-                preferred_order = [ModelSize.LARGE_V3, ModelSize.LARGE, ModelSize.MEDIUM, ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
-                config_template = {
-                    "device": "cuda",
-                    "compute_type": "float16", 
-                    "num_workers": 1,
-                    "batch_size": 4
-                }
-            elif self.hardware.gpu_memory_gb >= 4:
-                # Lower-end GPU: prefer medium models
-                preferred_order = [ModelSize.MEDIUM, ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
-                config_template = {
-                    "device": "cuda",
-                    "compute_type": "float16",
-                    "num_workers": 1,
-                    "batch_size": 2
-                }
-            else:
-                # Very low GPU memory: use small models
-                preferred_order = [ModelSize.BASE, ModelSize.SMALL, ModelSize.TINY]
-                config_template = {
-                    "device": "cuda",
-                    "compute_type": "float16",
-                    "num_workers": 1,
-                    "batch_size": 1
-                }
-            
-            # Find the best downloaded model that matches our preference
-            for preferred_model in preferred_order:
-                if preferred_model in downloaded_models:
-                    return ModelConfig(
-                        model_size=preferred_model,
-                        **config_template
-                    )
-            
-            # If no preferred models are downloaded, fall back to the first preference
-            # (it will be downloaded automatically when needed)
-            return ModelConfig(
-                model_size=preferred_order[0],
-                **config_template
-            )
+        # Always prioritize accuracy over speed for GPU - Large-v3 is always first choice
+        preferred_order = [ModelSize.LARGE_V3, ModelSize.LARGE, ModelSize.MEDIUM, ModelSize.SMALL, ModelSize.BASE, ModelSize.TINY]
         
-        # Fallback to CPU configuration
-        return self._get_cpu_config(downloaded_models)
-    
-    def _get_server_config(self, downloaded_models: List[ModelSize] = None) -> ModelConfig:
-        """Optimal configuration for server environment (CPU only)"""
-        return self._get_cpu_config(downloaded_models)
+        # Define config based on GPU memory for performance optimization
+        if self.hardware.gpu_memory_gb >= 10:
+            # High-end GPU
+            config_template = {
+                "device": "cuda",
+                "compute_type": "float16",
+                "num_workers": 2,
+                "batch_size": 8
+            }
+        elif self.hardware.gpu_memory_gb >= 8:
+            # Good GPU
+            config_template = {
+                "device": "cuda",
+                "compute_type": "float16",
+                "num_workers": 2,
+                "batch_size": 6
+            }
+        elif self.hardware.gpu_memory_gb >= 6:
+            # Mid-range GPU
+            config_template = {
+                "device": "cuda",
+                "compute_type": "float16", 
+                "num_workers": 1,
+                "batch_size": 4
+            }
+        elif self.hardware.gpu_memory_gb >= 4:
+            # Lower-end GPU
+            config_template = {
+                "device": "cuda",
+                "compute_type": "float16",
+                "num_workers": 1,
+                "batch_size": 2
+            }
+        else:
+            # Very low GPU memory
+            config_template = {
+                "device": "cuda",
+                "compute_type": "float16",
+                "num_workers": 1,
+                "batch_size": 1
+            }
+        
+        # Find the best downloaded model that matches our preference
+        for preferred_model in preferred_order:
+            if preferred_model in downloaded_models:
+                return ModelConfig(
+                    model_size=preferred_model,
+                    **config_template
+                )
+        
+        # If no preferred models are downloaded, fall back to the first preference
+        # (it will be downloaded automatically when needed)
+        return ModelConfig(
+            model_size=preferred_order[0],
+            **config_template
+        )
     
     def _get_cpu_config(self, downloaded_models: List[ModelSize] = None) -> ModelConfig:
-        """CPU-optimized configuration"""
+        """CPU-optimized configuration - prioritize accuracy based on hardware capability"""
         if downloaded_models is None:
             downloaded_models = []
             
-        if self.hardware.ram_gb >= 8 and self.hardware.cpu_cores >= 4:
-            # Reasonable server: prefer base model
-            preferred_order = [ModelSize.BASE, ModelSize.TINY, ModelSize.SMALL]
+        # Define preferred order based on hardware capability - always prioritize highest accuracy available
+        if self.hardware.ram_gb >= 15 and self.hardware.cpu_cores >= 8:
+            # High-end CPU: can handle large models, prioritize Large-v3
+            preferred_order = [ModelSize.LARGE_V3, ModelSize.LARGE, ModelSize.MEDIUM, ModelSize.SMALL, ModelSize.BASE, ModelSize.TINY]
+            config_template = {
+                "device": "cpu",
+                "compute_type": "int8",
+                "num_workers": min(self.hardware.cpu_cores, 6),
+                "batch_size": 1
+            }
+        elif self.hardware.ram_gb >= 7 and self.hardware.cpu_cores >= 4:
+            # Mid-range CPU: prioritize Medium as highest practical accuracy
+            preferred_order = [ModelSize.MEDIUM, ModelSize.SMALL, ModelSize.BASE, ModelSize.TINY]
             config_template = {
                 "device": "cpu",
                 "compute_type": "int8",
@@ -263,8 +259,8 @@ class Config:
                 "batch_size": 1
             }
         else:
-            # Limited server: prefer tiny model
-            preferred_order = [ModelSize.TINY, ModelSize.BASE, ModelSize.SMALL]
+            # Limited CPU: prioritize Small as highest practical accuracy
+            preferred_order = [ModelSize.SMALL, ModelSize.BASE, ModelSize.TINY, ModelSize.MEDIUM]
             config_template = {
                 "device": "cpu",
                 "compute_type": "int8", 
@@ -280,7 +276,7 @@ class Config:
                     **config_template
                 )
         
-        # If no preferred models are downloaded, use the first preference
+        # If no preferred models are downloaded, fall back to the first preference
         return ModelConfig(
             model_size=preferred_order[0],
             **config_template
@@ -304,7 +300,6 @@ class Config:
         downloaded_model_names = [model.value for model in downloaded_models]
         
         return {
-            "environment": self.environment.value,
             "model_size": self.model_config.model_size.value,
             "device": self.model_config.device,
             "compute_type": self.model_config.compute_type,

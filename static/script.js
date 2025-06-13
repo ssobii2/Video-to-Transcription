@@ -359,14 +359,38 @@ async function handleUpload() {
     return;
   }
 
-  const formData = new FormData();
-  formData.append("file", fileInput.files[0]);
+  const file = fileInput.files[0];
   const prompt = promptInput.value.trim();
-  formData.append("prompt", prompt);
-  formData.append("model", modelSelect.value);
+  const model = modelSelect.value;
 
   clearError();
   clearProgress();
+
+  // Check for duplicate transcription before starting upload
+  try {
+    const duplicateCheckData = new FormData();
+    duplicateCheckData.append("filename", file.name);
+    
+    const duplicateResponse = await fetch("/api/check-duplicate", {
+      method: "POST",
+      body: duplicateCheckData
+    });
+
+    if (duplicateResponse.ok) {
+      const duplicateResult = await duplicateResponse.json();
+      
+      if (duplicateResult.exists) {
+        displayMessage(`ℹ️ File Already Processed\n\n${duplicateResult.message}\n\nYou can find the existing files in the sections below.`);
+        return;
+      }
+    } else {
+      // If duplicate check fails, show warning but allow upload to proceed
+      console.warn("Duplicate check failed, proceeding with upload");
+    }
+  } catch (error) {
+    // If duplicate check fails, show warning but allow upload to proceed
+    console.warn("Duplicate check error:", error);
+  }
 
   // Show button loading state
   LoadingManager.showButtonLoading("upload-button", "Upload & Process");
@@ -390,6 +414,34 @@ async function handleUpload() {
   isProcessing = true;
 
   try {
+    // Use chunked upload for large files (> 50MB) to bypass Cloudflare limits
+    const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks to stay under Cloudflare's 100MB limit
+    
+    if (file.size > CHUNK_SIZE) {
+      await handleChunkedUpload(file, prompt, model, uploadProgressBar, uploadProgressMessage);
+    } else {
+      await handleRegularUpload(file, prompt, model, uploadProgressBar, uploadProgressMessage);
+    }
+
+  } catch (error) {
+    LoadingManager.hideButtonLoading("upload-button");
+    isProcessing = false;
+    displayError("Error uploading file: " + error.message);
+    document.getElementById("status").style.display = "none";
+
+    uploadProgressBar.style.display = "none";
+    uploadProgressMessage.style.display = "none";
+    document.getElementById("upload-progress-container").style.display = "none";
+  }
+}
+
+async function handleRegularUpload(file, prompt, model, uploadProgressBar, uploadProgressMessage) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("prompt", prompt);
+  formData.append("model", model);
+
+  return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/upload/", true);
 
@@ -403,47 +455,16 @@ async function handleUpload() {
 
         if (percentComplete >= 100) {
           uploadProgressMessage.textContent = "Upload Complete!";
-
-          uploadProgressBar.style.display = "none";
-          uploadProgressMessage.style.display = "none";
-          document.getElementById("upload-progress-container").style.display =
-            "none";
-
-          document.getElementById("status").style.display = "block";
-
-          // Update progress section for processing with a slight delay
-          // This prevents immediate WebSocket messages from overriding the upload complete message
-          setTimeout(() => {
-            const messageElement = document.getElementById("message");
-            if (messageElement.innerText === "Uploading file...") {
-              messageElement.innerText =
-                "Upload complete, starting processing...";
-            }
-          }, 500);
+          hideUploadProgress();
+          showProcessingStatus();
         }
       }
     };
 
-    xhr.onload = async function () {
+    xhr.onload = function () {
       LoadingManager.hideButtonLoading("upload-button");
-
-      if (xhr.status !== 200) {
-        isProcessing = false;
-      }
-      document.getElementById("status").style.display = "none";
-      document.getElementById("file-input").value = "";
-      document.getElementById("selected-file-name").textContent =
-        "No file selected";
-      document
-        .getElementById("selected-file-name")
-        .classList.remove("has-file");
-      document.getElementById("prompt-input").value = "";
-
-      uploadProgressBar.style.display = "none";
-      uploadProgressMessage.style.display = "none";
-      document.getElementById("upload-progress-container").style.display =
-        "none";
-
+      resetFormState();
+      
       if (xhr.status === 200) {
         try {
           const responseData = JSON.parse(xhr.responseText);
@@ -453,42 +474,15 @@ async function handleUpload() {
             listTranscriptions();
             listAIResponses();
           }
+          resolve();
         } catch (e) {
           console.error("Error parsing response:", e);
           displayError("Unexpected response format from server");
+          reject(e);
         }
       } else {
-        // Handle error responses - check if response is JSON or HTML
-        let errorMessage = "Error uploading file.";
-        
-        try {
-          const responseData = JSON.parse(xhr.responseText);
-          
-          // Handle specific HTTP error codes
-          if (xhr.status === 413) {
-            errorMessage = `⚠️ File Too Large\n\n${responseData.detail || "The file you're trying to upload is too large. Please try a smaller file or check the server configuration."}\n\nNote: Check nginx client_max_body_size setting if this persists.`;
-          } else if (
-            xhr.status === 400 &&
-            responseData.detail &&
-            (responseData.detail.includes("already exists") ||
-              responseData.detail.includes("Transcription already exists"))
-          ) {
-            errorMessage = `⚠️ Duplicate File Detected\n\n${responseData.detail}\n\nPlease delete the existing transcription file from the "Transcription Files" section below, then try again.`;
-          } else {
-            errorMessage = responseData.detail || responseData.error || `Server error (${xhr.status})`;
-          }
-        } catch (e) {
-          // Response is not JSON (likely HTML error page from nginx)
-          console.error("Non-JSON response received:", xhr.responseText);
-          
-          if (xhr.status === 413) {
-            errorMessage = `⚠️ File Too Large (413 Error)\n\nThe file you're trying to upload exceeds the server's size limit.\n\nThis is likely a server configuration issue. Please:\n1. Try a smaller file\n2. Check nginx client_max_body_size setting\n3. Check FastAPI's max file size configuration`;
-          } else {
-            errorMessage = `Server Error (${xhr.status})\n\nReceived an unexpected response from the server. Please try again or contact support if the issue persists.`;
-          }
-        }
-        
-        displayError(errorMessage);
+        handleUploadError(xhr);
+        reject(new Error(`Upload failed with status ${xhr.status}`));
       }
     };
 
@@ -497,25 +491,175 @@ async function handleUpload() {
       isProcessing = false;
       displayError("Error uploading file.");
       document.getElementById("status").style.display = "none";
-
-      uploadProgressBar.style.display = "none";
-      uploadProgressMessage.style.display = "none";
-      document.getElementById("upload-progress-container").style.display =
-        "none";
+      hideUploadProgress();
+      reject(new Error("Network error"));
     };
 
-    uploadProgressBar.style.display = "block";
     xhr.send(formData);
-  } catch (error) {
-    LoadingManager.hideButtonLoading("upload-button");
-    isProcessing = false;
-    displayError("Error uploading file.");
-    document.getElementById("status").style.display = "none";
+  });
+}
 
-    uploadProgressBar.style.display = "none";
-    uploadProgressMessage.style.display = "none";
-    document.getElementById("upload-progress-container").style.display = "none";
+async function handleChunkedUpload(file, prompt, model, uploadProgressBar, uploadProgressMessage) {
+  const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+  const fileName = file.name;
+  
+  uploadProgressMessage.textContent = `Upload Progress: 0%`;
+
+  // Step 1: Initialize chunked upload
+  try {
+    const initResponse = await fetch("/upload/init", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: fileName,
+        filesize: file.size,
+        total_chunks: totalChunks,
+        prompt: prompt,
+        model: model
+      })
+    });
+
+    if (!initResponse.ok) {
+      throw new Error(`Failed to initialize upload: ${initResponse.status}`);
+    }
+
+    const { upload_id } = await initResponse.json();
+
+    // Step 2: Upload chunks with real-time progress
+    let totalBytesUploaded = 0;
+    
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      const start = chunkIndex * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const chunk = file.slice(start, end);
+
+      const chunkFormData = new FormData();
+      chunkFormData.append("chunk", chunk);
+      chunkFormData.append("upload_id", upload_id);
+      chunkFormData.append("chunk_index", chunkIndex);
+      chunkFormData.append("total_chunks", totalChunks);
+
+      // Use XMLHttpRequest for this chunk to get real-time progress
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/upload/chunk", true);
+
+        xhr.upload.onprogress = function (event) {
+          if (event.lengthComputable) {
+            // Calculate total progress including previous chunks + current chunk progress
+            const currentChunkProgress = event.loaded;
+            const overallProgress = ((totalBytesUploaded + currentChunkProgress) / file.size) * 100;
+            
+            uploadProgressBar.value = overallProgress;
+            uploadProgressMessage.textContent = `Upload Progress: ${Math.round(overallProgress)}%`;
+          }
+        };
+
+        xhr.onload = function () {
+          if (xhr.status === 200) {
+            // Update total bytes uploaded after chunk completes
+            totalBytesUploaded += chunk.size;
+            resolve();
+          } else {
+            reject(new Error(`Failed to upload chunk ${chunkIndex + 1}: ${xhr.status}`));
+          }
+        };
+
+        xhr.onerror = function () {
+          reject(new Error(`Network error uploading chunk ${chunkIndex + 1}`));
+        };
+
+        xhr.send(chunkFormData);
+      });
+    }
+
+    // Step 3: Complete upload
+    const completeResponse = await fetch("/upload/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ upload_id: upload_id })
+    });
+
+    if (!completeResponse.ok) {
+      throw new Error(`Failed to complete upload: ${completeResponse.status}`);
+    }
+
+    uploadProgressMessage.textContent = "Upload Complete!";
+    hideUploadProgress();
+    showProcessingStatus();
+
+    LoadingManager.hideButtonLoading("upload-button");
+    resetFormState();
+
+    const responseData = await completeResponse.json();
+    if (responseData.error) {
+      displayError(responseData.error);
+    } else {
+      listTranscriptions();
+      listAIResponses();
+    }
+
+  } catch (error) {
+    throw error;
   }
+}
+
+function hideUploadProgress() {
+  const uploadProgressBar = document.getElementById("upload-progress-bar");
+  const uploadProgressMessage = document.getElementById("upload-progress-message");
+  
+  uploadProgressBar.style.display = "none";
+  uploadProgressMessage.style.display = "none";
+  document.getElementById("upload-progress-container").style.display = "none";
+}
+
+function showProcessingStatus() {
+  document.getElementById("status").style.display = "block";
+  
+  // Update progress section for processing with a slight delay
+  setTimeout(() => {
+    const messageElement = document.getElementById("message");
+    if (messageElement.innerText === "Uploading file...") {
+      messageElement.innerText = "Upload complete, starting processing...";
+    }
+  }, 500);
+}
+
+function resetFormState() {
+  document.getElementById("status").style.display = "none";
+  document.getElementById("file-input").value = "";
+  document.getElementById("selected-file-name").textContent = "No file selected";
+  document.getElementById("selected-file-name").classList.remove("has-file");
+  document.getElementById("prompt-input").value = "";
+  isProcessing = false;
+}
+
+function handleUploadError(xhr) {
+  // Handle error responses - check if response is JSON or HTML
+  let errorMessage = "Error uploading file.";
+  
+  try {
+    const responseData = JSON.parse(xhr.responseText);
+    
+    // Handle specific HTTP error codes
+    if (
+      xhr.status === 400 &&
+      responseData.detail &&
+      (responseData.detail.includes("already exists") ||
+        responseData.detail.includes("Transcription already exists"))
+    ) {
+      errorMessage = `⚠️ File Already Processed\n\nA transcription already exists for this file. You can find it in the "Transcription Files" section below.\n\nIf you want to create a new transcription, please delete the existing one first.`;
+    } else {
+      errorMessage = responseData.detail || responseData.error || `Server error (${xhr.status})`;
+    }
+  } catch (e) {
+    // Response is not JSON (likely HTML error page from nginx)
+    console.error("Non-JSON response received:", xhr.responseText);
+    errorMessage = `Server Error (${xhr.status})\n\nReceived an unexpected response from the server. Please try again or contact support if the issue persists.`;
+  }
+  
+  displayError(errorMessage);
 }
 
 // Model Management Functions
@@ -866,22 +1010,27 @@ function truncateFileName(fileName, maxLength) {
 }
 
 function displayError(message) {
-  const errorMessageElement = document.getElementById("error-message");
-  errorMessageElement.innerText = message;
-  errorMessageElement.style.display = "block";
-}
-
-function clearError() {
-  const errorMessageElement = document.getElementById("error-message");
-  errorMessageElement.innerText = "";
-  errorMessageElement.style.display = "none";
+  const errorDiv = document.getElementById("error-message");
+  errorDiv.textContent = message;
+  errorDiv.style.display = "block";
+  errorDiv.style.backgroundColor = "#f8d7da";
+  errorDiv.style.color = "#721c24";
+  errorDiv.style.border = "1px solid #f5c6cb";
 }
 
 function displayMessage(message) {
-  const messageElement = document.getElementById("message");
-  if (messageElement) {
-    messageElement.innerText = message;
-  }
+  const errorDiv = document.getElementById("error-message");
+  errorDiv.textContent = message;
+  errorDiv.style.display = "block";
+  errorDiv.style.backgroundColor = "#d1ecf1";
+  errorDiv.style.color = "#0c5460";
+  errorDiv.style.border = "1px solid #bee5eb";
+}
+
+function clearError() {
+  const errorDiv = document.getElementById("error-message");
+  errorDiv.textContent = "";
+  errorDiv.style.display = "none";
 }
 
 function clearProgress() {

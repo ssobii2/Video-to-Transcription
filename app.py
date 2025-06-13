@@ -3,13 +3,19 @@ import asyncio
 import time
 import logging
 import subprocess
-from typing import Optional
+from typing import Optional, Dict, List
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect, Form, Request
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
+import uuid
+import tempfile
+import json
+import shutil
+from pathlib import Path
 
 # Load environment variables from .env file
 load_dotenv()
@@ -106,6 +112,19 @@ app.add_middleware(
 
 # Static file serving
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Store for active chunked uploads
+active_uploads: Dict[str, dict] = {}
+
+class ChunkUploadInit(BaseModel):
+    filename: str
+    filesize: int
+    total_chunks: int
+    prompt: str = ""
+    model: str
+
+class ChunkUploadComplete(BaseModel):
+    upload_id: str
 
 class ConnectionManager:
     """Manage WebSocket connections for real-time updates"""
@@ -474,6 +493,47 @@ async def get_suggested_prompts():
         "prompts": ai_service.get_suggested_prompts()
     })
 
+@app.post("/api/check-duplicate")
+async def check_duplicate_transcription(filename: str = Form(...)):
+    """Check if transcription or AI response already exists for a filename"""
+    try:
+        safe_name = safe_filename(filename)
+        base_name = os.path.splitext(safe_name)[0]
+        
+        transcript_filename = f"{base_name}_transcript.txt"
+        transcript_path = os.path.join(config.transcription_folder, transcript_filename)
+        
+        ai_response_filename = f"{base_name}_ai_response.txt"
+        ai_response_path = os.path.join(config.ai_responses_folder, ai_response_filename)
+        
+        existing_files = []
+        if os.path.exists(transcript_path):
+            existing_files.append(transcript_filename)
+        if os.path.exists(ai_response_path):
+            existing_files.append(ai_response_filename)
+        
+        if existing_files:
+            if len(existing_files) == 2:
+                message = f"Both transcription and AI response already exist for this file ({', '.join(existing_files)}). Please delete them first if you want to create new ones."
+            elif transcript_filename in existing_files:
+                message = f"A transcription already exists for this file ({transcript_filename}). Please delete it first if you want to create a new one."
+            else:
+                message = f"An AI response already exists for this file ({ai_response_filename}). Please delete it first if you want to create a new one."
+            
+            return JSONResponse({
+                "exists": True,
+                "existing_files": existing_files,
+                "message": message
+            })
+        else:
+            return JSONResponse({
+                "exists": False,
+                "message": "No existing files found. You can proceed with the upload."
+            })
+    except Exception as e:
+        logger.error(f"Error checking duplicate files: {e}")
+        raise HTTPException(status_code=500, detail="Error checking for existing files")
+
 @app.post("/upload/")
 async def upload_file(file: UploadFile = File(...), prompt: str = Form(""), model: str = Form("")):
     """Upload and process media file"""
@@ -704,6 +764,202 @@ async def delete_ai_response(filename: str):
     except Exception as e:
         logger.error(f"Error deleting AI response: {e}")
         raise HTTPException(status_code=500, detail="Error deleting AI response")
+
+@app.post("/upload/init")
+async def init_chunked_upload(init_data: ChunkUploadInit):
+    """Initialize chunked upload for large files"""
+    try:
+        # Validate file
+        if not init_data.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
+        
+        if not allowed_file(init_data.filename, config.allowed_extensions):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid file format. Supported: {', '.join(config.allowed_extensions)}"
+            )
+        
+        # Validate model selection
+        if not init_data.model:
+            raise HTTPException(status_code=400, detail="No model selected")
+        
+        # Check file size limit
+        file_size_mb = init_data.filesize / (1024 * 1024)
+        if file_size_mb > config.max_file_size_mb:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size: {config.max_file_size_mb} MB"
+            )
+        
+        # Check for duplicate transcriptions
+        safe_name = safe_filename(init_data.filename)
+        transcript_filename = f"{os.path.splitext(safe_name)[0]}_transcript.txt"
+        transcript_path = os.path.join(config.transcription_folder, transcript_filename)
+        
+        if os.path.exists(transcript_path):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Transcription already exists: {transcript_filename}. Please delete the existing transcription file first, then try again."
+            )
+        
+        # Generate unique upload ID
+        upload_id = str(uuid.uuid4())
+        
+        # Create temporary directory for chunks
+        temp_dir = os.path.join(tempfile.gettempdir(), f"upload_{upload_id}")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Store upload info
+        active_uploads[upload_id] = {
+            "filename": safe_name,
+            "filesize": init_data.filesize,
+            "total_chunks": init_data.total_chunks,
+            "prompt": init_data.prompt,
+            "model": init_data.model,
+            "temp_dir": temp_dir,
+            "chunks_received": set(),
+            "created_at": asyncio.get_event_loop().time()
+        }
+        
+        logger.info(f"Initialized chunked upload: {safe_name} ({file_size_mb:.1f} MB, {init_data.total_chunks} chunks)")
+        
+        return {"upload_id": upload_id, "message": "Upload initialized"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to initialize chunked upload: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload initialization failed: {str(e)}")
+
+@app.post("/upload/chunk")
+async def upload_chunk(
+    chunk: UploadFile = File(...),
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...)
+):
+    """Upload a single chunk of a large file"""
+    try:
+        # Validate upload session
+        if upload_id not in active_uploads:
+            raise HTTPException(status_code=400, detail="Invalid upload ID or upload session expired")
+        
+        upload_info = active_uploads[upload_id]
+        
+        # Validate chunk
+        if chunk_index >= total_chunks or chunk_index < 0:
+            raise HTTPException(status_code=400, detail="Invalid chunk index")
+        
+        if total_chunks != upload_info["total_chunks"]:
+            raise HTTPException(status_code=400, detail="Total chunks mismatch")
+        
+        # Save chunk to temporary directory
+        chunk_path = os.path.join(upload_info["temp_dir"], f"chunk_{chunk_index:06d}")
+        
+        with open(chunk_path, 'wb') as f:
+            chunk_data = await chunk.read()
+            f.write(chunk_data)
+        
+        # Track received chunks
+        upload_info["chunks_received"].add(chunk_index)
+        
+        logger.debug(f"Received chunk {chunk_index + 1}/{total_chunks} for upload {upload_id}")
+        
+        return {
+            "message": f"Chunk {chunk_index + 1}/{total_chunks} uploaded successfully",
+            "chunks_received": len(upload_info["chunks_received"]),
+            "total_chunks": total_chunks
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to upload chunk: {e}")
+        raise HTTPException(status_code=500, detail=f"Chunk upload failed: {str(e)}")
+
+@app.post("/upload/complete")
+async def complete_chunked_upload(complete_data: ChunkUploadComplete):
+    """Complete chunked upload and start processing"""
+    try:
+        upload_id = complete_data.upload_id
+        
+        # Validate upload session
+        if upload_id not in active_uploads:
+            raise HTTPException(status_code=400, detail="Invalid upload ID or upload session expired")
+        
+        upload_info = active_uploads[upload_id]
+        
+        # Verify all chunks received
+        expected_chunks = set(range(upload_info["total_chunks"]))
+        if upload_info["chunks_received"] != expected_chunks:
+            missing_chunks = expected_chunks - upload_info["chunks_received"]
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Missing chunks: {sorted(missing_chunks)}"
+            )
+        
+        # Clean input folder and reconstruct file from chunks
+        clean_folder_contents(config.input_folder)
+        
+        final_file_path = os.path.join(config.input_folder, upload_info["filename"])
+        
+        with open(final_file_path, 'wb') as final_file:
+            for chunk_index in range(upload_info["total_chunks"]):
+                chunk_path = os.path.join(upload_info["temp_dir"], f"chunk_{chunk_index:06d}")
+                
+                if not os.path.exists(chunk_path):
+                    raise HTTPException(
+                        status_code=500, 
+                        detail=f"Chunk file missing: {chunk_index}"
+                    )
+                
+                with open(chunk_path, 'rb') as chunk_file:
+                    final_file.write(chunk_file.read())
+        
+        # Clean up temporary chunks
+        try:
+            import shutil
+            shutil.rmtree(upload_info["temp_dir"])
+        except Exception as e:
+            logger.warning(f"Failed to clean up temp directory: {e}")
+        
+        # Remove from active uploads
+        del active_uploads[upload_id]
+        
+        file_size_mb = upload_info["filesize"] / (1024 * 1024)
+        logger.info(f"Chunked upload completed: {upload_info['filename']} ({file_size_mb:.1f} MB)")
+        logger.info(f"Model selected: {upload_info['model']}")
+        logger.info(f"Prompt received: '{upload_info['prompt']}' (length: {len(upload_info['prompt'].strip())})")
+        
+        # Process file asynchronously
+        asyncio.create_task(process_uploaded_file(
+            final_file_path, 
+            upload_info["prompt"], 
+            upload_info["model"]
+        ))
+        
+        return JSONResponse({
+            "message": "Chunked upload completed successfully. Processing started.",
+            "filename": upload_info["filename"],
+            "size_mb": round(file_size_mb, 1)
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to complete chunked upload: {e}")
+        
+        # Clean up on error
+        if upload_id in active_uploads:
+            upload_info = active_uploads[upload_id]
+            try:
+                import shutil
+                shutil.rmtree(upload_info["temp_dir"])
+            except Exception:
+                pass
+            del active_uploads[upload_id]
+        
+        raise HTTPException(status_code=500, detail=f"Upload completion failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
